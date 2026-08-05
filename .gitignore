@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime trace inputs and generated chunks must never enter the skill repo.
+*.trace.json
+*.trace.json.gz
+*.perfetto-trace
+*.part[0-9]*
+data/
+manifest.json
+.northjetty-trace-site
+
+# Local credentials and publisher state.
+.env
+.northjetty/
+*.log
+
+.DS_Store

@@ -1,0 +1,4 @@
+interface:
+  display_name: "NorthJetty Trace Publisher"
+  short_description: "Build and publish zero-data Perfetto trace sites"
+  default_prompt: "Use $northjetty-publish-traces to build an empty or trace-backed Perfetto viewer and publish it through NorthJetty."
