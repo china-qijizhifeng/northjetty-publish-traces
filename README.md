@@ -23,18 +23,12 @@
 
 ## 安装
 
-这是私有仓库，先确保本机 `gh` 已登录且账号拥有仓库权限：
-
-```bash
-gh auth status
-```
-
-将仓库克隆到 Codex Skill 目录：
+这是公开仓库，无需 GitHub 登录即可克隆到 Codex Skill 目录：
 
 ```bash
 SKILLS_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
 mkdir -p "$SKILLS_ROOT"
-gh repo clone china-qijizhifeng/northjetty-publish-traces \
+git clone https://github.com/china-qijizhifeng/northjetty-publish-traces.git \
   "$SKILLS_ROOT/northjetty-publish-traces"
 ```
 
