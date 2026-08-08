@@ -52,9 +52,19 @@ def main() -> int:
             if trace.get("group") not in group_ids:
                 fail(f"trace #{index} references unknown group {trace.get('group')!r}")
             expected_size = trace.get("size")
+            timestamp_epoch = trace.get("timestamp_epoch")
+            timestamp_source = trace.get("timestamp_source")
             parts = trace.get("parts")
             if not isinstance(expected_size, int) or expected_size <= 0:
                 fail(f"trace #{index} has invalid size")
+            if (
+                isinstance(timestamp_epoch, bool)
+                or not isinstance(timestamp_epoch, (int, float))
+                or timestamp_epoch <= 0
+            ):
+                fail(f"trace #{index} has invalid timestamp_epoch")
+            if timestamp_source not in {"filename", "mtime"}:
+                fail(f"trace #{index} has invalid timestamp_source")
             if not isinstance(parts, list) or not parts:
                 fail(f"trace #{index} has no parts")
 

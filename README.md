@@ -18,6 +18,8 @@
 - 自动递归发现 `.trace.json` 和 `.trace.json.gz`。
 - 自动按 8,000,000 bytes 分块，避开当前 NorthJetty 单响应大小限制。
 - 支持按场景分组，并从文件名识别 `TP/PP`、`TP/DP` 或 `rank`。
+- Viewer 按浏览器本地日期分区：日期倒序，同一天按最新采集时间倒序；场景也按其最新 trace 排序。
+- 构建时优先从文件名提取 Unix 时间戳；旧命名不带时间时，自动使用原始 trace 的 mtime。
 - 发布前校验 manifest、分块路径、分块大小和总字节数。
 - 默认建议使用 NorthJetty `--require-auth`。
 
@@ -82,6 +84,17 @@ python3 "$SKILL_DIR/scripts/build_trace_site.py" \
 ```
 
 同一 group 可以重复指定多个文件或目录。若使用其他命名方式，可通过重复的 `--pattern` 覆盖默认发现规则。
+
+### 日期与排序
+
+生成的 `manifest.json` 会为每条 trace 写入 `timestamp_epoch` 和 `timestamp_source`：
+
+- 文件名含 10 位 Unix 秒时间戳时，以它作为采集时间；
+- 文件名没有时间戳时，以原始 trace 文件的 mtime 作为回退；
+- 页面使用浏览器本地时区显示日期和时间，不会固定按 UTC 切日；
+- 场景先按日期分区、日期从新到旧，同一天按场景内最新 trace 的时间从新到旧；选中 rank 后，trace 列表采用同样的倒序规则。
+
+因此后续只需正常重建站点，新加入的 trace 会自动落到正确日期，不需要手工维护页面顺序。
 
 ### 校验
 

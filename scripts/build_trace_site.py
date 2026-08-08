@@ -20,6 +20,8 @@ from typing import Iterable
 DEFAULT_CHUNK_BYTES = 8_000_000
 DEFAULT_PATTERNS = ("*.trace.json", "*.trace.json.gz")
 MARKER_NAME = ".northjetty-trace-site"
+MIN_TRACE_EPOCH = 946_684_800  # 2000-01-01 UTC
+MAX_TRACE_EPOCH = 4_102_444_800  # 2100-01-01 UTC
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TEMPLATE = SKILL_ROOT / "assets" / "index.html"
 
@@ -180,6 +182,16 @@ def infer_rank(filename: str) -> str:
     return Path(name).stem or "trace"
 
 
+def infer_timestamp(source: Path) -> tuple[float, str]:
+    """Prefer a Unix timestamp embedded in the filename, then use source mtime."""
+    match = re.search(r"(?<!\d)(\d{10}(?:\.\d+)?)(?!\d)", source.name)
+    if match:
+        timestamp = float(match.group(1))
+        if MIN_TRACE_EPOCH <= timestamp < MAX_TRACE_EPOCH:
+            return timestamp, "filename"
+    return source.stat().st_mtime, "mtime"
+
+
 def validate_trace(path: Path) -> None:
     """Catch obvious corrupt or mislabeled JSON traces without parsing large files."""
     if path.stat().st_size <= 0:
@@ -230,12 +242,15 @@ def build_stage(
         for source in paths:
             validate_trace(source)
             part_names = write_parts(source, group_dir, chunk_bytes)
+            timestamp_epoch, timestamp_source = infer_timestamp(source)
             traces.append(
                 {
                     "group": group,
                     "rank": infer_rank(source.name),
                     "file": source.name,
                     "size": source.stat().st_size,
+                    "timestamp_epoch": timestamp_epoch,
+                    "timestamp_source": timestamp_source,
                     "encoding": "gzip" if source.name.endswith(".gz") else "identity",
                     "parts": [f"data/{group}/{name}" for name in part_names],
                 }

@@ -32,6 +32,7 @@ Read [references/operations.md](references/operations.md) before publishing, cha
 
 1. Resolve the requested output directory and trace sources. If no trace source was supplied, build an empty viewer without asking for placeholder data.
 2. For trace-backed builds, inspect only the supplied paths. Prefer `.trace.json.gz`; raw `.trace.json` also works.
+   The builder records a timestamp for every trace, preferring a 10-digit Unix timestamp in the filename and falling back to the source file mtime. The viewer groups scenes and traces by browser-local date and sorts newest first.
 3. Build the site:
 
 ```bash
