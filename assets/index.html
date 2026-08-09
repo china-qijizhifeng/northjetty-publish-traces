@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="icon" href="data:,">
 <title>Torch Trace Viewer</title>
 <style>
@@ -25,6 +28,7 @@
   .browser{position:relative;z-index:20;display:grid;gap:8px;padding:8px 18px 10px;border-bottom:1px solid var(--border);flex:0 0 auto;background:var(--panel)}
   .browser-head{display:flex;align-items:center;gap:10px;min-width:0}
   #site-title{flex:0 0 auto;font-size:13px;line-height:20px}
+  .ui-version{flex:0 0 auto;padding:1px 6px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:9px;font-weight:700;line-height:16px}
   #compact-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-family:var(--mono);font-size:11px}
   #toggle-browser{flex:0 0 auto;margin-left:auto;height:28px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);cursor:pointer;font-size:11px}
   #toggle-browser:hover{border-color:var(--accent);color:var(--accent)}
@@ -121,6 +125,7 @@
 <section class="browser" id="browser" aria-label="Trace 选择器">
   <div class="browser-head">
     <strong id="site-title">Torch Trace Viewer</strong>
+    <span class="ui-version" title="可搜索、按日期分组的紧凑场景选择器">新版</span>
     <span id="compact-summary">尚未选择 trace</span>
     <button id="toggle-browser" type="button" aria-expanded="true" aria-controls="browser-content">收起选择 ▴</button>
   </div>
@@ -318,7 +323,7 @@ const state = {
 let activeTraceEl = null;
 let loadToken = 0;
 let activeFetch = null;
-const COLLAPSE_KEY = "northjetty-torch-trace-browser-collapsed";
+const COLLAPSE_KEY = "northjetty-torch-trace-browser-collapsed-v2";
 
 function groupLabel(group){
   const meta = state.groupMeta[group];

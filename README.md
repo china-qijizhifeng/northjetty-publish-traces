@@ -20,6 +20,7 @@
 - 支持按场景分组，并从文件名识别 `TP/PP`、`TP/DP` 或 `rank`。
 - Viewer 使用可搜索的场景下拉框，内部按浏览器本地日期分区并滚动；日期倒序，同一天按最新采集时间倒序。
 - Rank 与 Trace 使用紧凑下拉框；当前 `scene`、`rank`、`trace` 会写入 URL，刷新或分享链接后可恢复定位。
+- 发布器对 Viewer HTML 和 `manifest.json` 返回 `no-store`，但保留 trace 分块的正常缓存，避免 UI 更新后仍命中旧页面。
 - 构建时优先从文件名提取 Unix 时间戳；旧命名不带时间时，自动使用原始 trace 的 mtime。
 - 发布前校验 manifest、分块路径、分块大小和总字节数。
 - 默认建议使用 NorthJetty `--require-auth`。
@@ -150,6 +151,7 @@ python3 "$SKILL_DIR/scripts/nj-publish.py" stop team-torch-trace
 ```
 
 站点发布后，重新构建同一个输出目录并刷新浏览器即可看到新 trace，通常不需要重建 route。
+新版发布器会让 HTML 与 manifest 每次重新获取；已由旧版发布器启动的 route 需要重启一次，新的缓存响应头才会生效。
 
 ## 生成目录
 

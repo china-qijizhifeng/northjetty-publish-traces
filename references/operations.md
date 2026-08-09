@@ -72,6 +72,9 @@ python3 scripts/nj-publish.py stop team-torch-trace
 
 Rebuilding the same generated directory updates a running static route after refresh.
 For large sites, finish the atomic rebuild before asking viewers to refresh.
+The bundled static handler sends `Cache-Control: no-store` for the viewer HTML and
+`manifest.json`, while trace part files remain cacheable. Restart routes that were
+started by an older publisher process so the updated handler is loaded.
 
 ## Security and capacity
 
