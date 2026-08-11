@@ -529,29 +529,35 @@ function localDateKey(timestamp){
   const pad = value=>String(value).padStart(2,"0");
   return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
 }
-function localDateLabel(timestamp){
-  if(timestamp === null) return "未知日期";
-  const weekday = new Intl.DateTimeFormat("zh-CN",{weekday:"short"}).format(new Date(timestamp*1000));
-  return `${localDateKey(timestamp)} · ${weekday}`;
+function traceDateKey(tr){
+  const stored=String((tr && tr.storage_date) || "");
+  if(/^\d{4}-\d{2}-\d{2}$/.test(stored)) return stored;
+  return localDateKey(traceTimestamp(tr));
+}
+function dateLabel(dateKey,timestamp){
+  if(dateKey === "__unknown__") return "未知日期";
+  let date=timestamp === null ? null : new Date(timestamp*1000);
+  if(!date || localDateKey(timestamp)!==dateKey){
+    const [year,month,day]=dateKey.split("-").map(Number);
+    date=new Date(year,month-1,day,12,0,0);
+  }
+  const weekday = new Intl.DateTimeFormat("zh-CN",{weekday:"short"}).format(date);
+  return `${dateKey} · ${weekday}`;
 }
 function localTimeLabel(timestamp){
   if(timestamp === null) return "未知时间";
   return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).format(new Date(timestamp*1000));
 }
 function compareTracesNewestFirst(a,b){
+  const ad=traceDateKey(a), bd=traceDateKey(b);
+  if(ad === "__unknown__" && bd !== "__unknown__") return 1;
+  if(ad !== "__unknown__" && bd === "__unknown__") return -1;
+  if(ad !== bd) return bd.localeCompare(ad);
   const at = traceTimestamp(a), bt = traceTimestamp(b);
   if(at === null && bt !== null) return 1;
   if(at !== null && bt === null) return -1;
   if(at !== null && bt !== null && at !== bt) return bt-at;
   return (b.file||"").localeCompare(a.file||"",undefined,{numeric:true});
-}
-function latestTraceTimestamp(traces){
-  let latest = null;
-  for(const trace of traces){
-    const timestamp = traceTimestamp(trace);
-    if(timestamp !== null && (latest === null || timestamp > latest)) latest = timestamp;
-  }
-  return latest;
 }
 function traceLabel(tr, index, total){
   if(tr.label) return tr.label;
@@ -568,7 +574,7 @@ function groupByRank(traces){
   }
   return out;
 }
-function traceKey(tr,index){ return String(tr.file || (tr.parts && tr.parts[0]) || `trace-${index}`); }
+function traceKey(tr,index){ return String(tr.id || tr.file || (tr.parts && tr.parts[0]) || `trace-${index}`); }
 function setSelectPlaceholder(select,text){
   select.innerHTML="";
   const option=document.createElement("option"); option.value=""; option.textContent=text;
@@ -589,7 +595,7 @@ function renderSceneOptions(query=""){
   const needle=query.trim().toLocaleLowerCase();
   state.filteredGroups=state.groupRecords.filter(record=>{
     if(!needle) return true;
-    const haystack=`${groupLabel(record.group)} ${record.group} ${localDateKey(record.timestamp)}`.toLocaleLowerCase();
+    const haystack=`${groupLabel(record.group)} ${record.group} ${record.dateKey}`.toLocaleLowerCase();
     return haystack.includes(needle);
   });
   sceneList.innerHTML="";
@@ -600,15 +606,15 @@ function renderSceneOptions(query=""){
   }
   const dated=new Map();
   for(const record of state.filteredGroups){
-    const key=localDateKey(record.timestamp);
-    if(!dated.has(key)) dated.set(key,{timestamp:record.timestamp,records:[]});
+    const key=record.dateKey;
+    if(!dated.has(key)) dated.set(key,{dateKey:key,timestamp:record.timestamp,records:[]});
     dated.get(key).records.push(record);
   }
   let optionIndex=0;
   for(const bucket of dated.values()){
     const section=document.createElement("section"); section.className="scene-date";
     const heading=document.createElement("div"); heading.className="scene-date-head";
-    const date=document.createElement("span"); date.textContent=localDateLabel(bucket.timestamp);
+    const date=document.createElement("span"); date.textContent=dateLabel(bucket.dateKey,bucket.timestamp);
     const count=document.createElement("span"); count.textContent=`${bucket.records.length} 场景`;
     heading.append(date,count); section.appendChild(heading);
     for(const record of bucket.records){
@@ -706,12 +712,12 @@ function selectRank(group, rank, traces,{preferredTrace=null}={}){
   traceSelect.appendChild(placeholder);
   const dated = new Map();
   ordered.forEach((trace,index)=>{
-    const timestamp=traceTimestamp(trace), key=localDateKey(timestamp);
-    if(!dated.has(key)) dated.set(key,{timestamp,entries:[]});
+    const timestamp=traceTimestamp(trace), key=traceDateKey(trace);
+    if(!dated.has(key)) dated.set(key,{dateKey:key,timestamp,entries:[]});
     dated.get(key).entries.push({trace,index});
   });
   for(const bucket of dated.values()){
-    const groupEl=document.createElement("optgroup"); groupEl.label=`${localDateLabel(bucket.timestamp)} · ${bucket.entries.length} traces`;
+    const groupEl=document.createElement("optgroup"); groupEl.label=`${dateLabel(bucket.dateKey,bucket.timestamp)} · ${bucket.entries.length} traces`;
     for(const {trace:tr,index} of bucket.entries){
       let key=traceKey(tr,index); if(state.traceLookup.has(key)) key=`${key}#${index}`;
       state.traceLookup.set(key,{tr,index,total:ordered.length,key});
@@ -805,7 +811,13 @@ async function loadManifest(){
     log("站点已就绪，尚未发布 trace");
     return;
   }
-  const orderedGroups=order.map((group,index)=>({group,index,traces:state.byGroup[group],timestamp:latestTraceTimestamp(state.byGroup[group])})).sort((a,b)=>{
+  const orderedGroups=order.map((group,index)=>{
+    const traces=state.byGroup[group], latest=[...traces].sort(compareTracesNewestFirst)[0];
+    return {group,index,traces,timestamp:traceTimestamp(latest),dateKey:traceDateKey(latest)};
+  }).sort((a,b)=>{
+    if(a.dateKey === "__unknown__" && b.dateKey !== "__unknown__") return 1;
+    if(a.dateKey !== "__unknown__" && b.dateKey === "__unknown__") return -1;
+    if(a.dateKey !== b.dateKey) return b.dateKey.localeCompare(a.dateKey);
     if(a.timestamp === null && b.timestamp !== null) return 1;
     if(a.timestamp !== null && b.timestamp === null) return -1;
     if(a.timestamp !== null && b.timestamp !== null && a.timestamp !== b.timestamp) return b.timestamp-a.timestamp;

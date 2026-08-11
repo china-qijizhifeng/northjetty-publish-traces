@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-
 DEFAULT_CHUNK_BYTES = 8_000_000
 DEFAULT_PATTERNS = ("*.trace.json", "*.trace.json.gz")
 MARKER_NAME = ".northjetty-trace-site"
 MIN_TRACE_EPOCH = 946_684_800  # 2000-01-01 UTC
 MAX_TRACE_EPOCH = 4_102_444_800  # 2100-01-01 UTC
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+GROUP_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TEMPLATE = SKILL_ROOT / "assets" / "index.html"
 
@@ -54,6 +55,13 @@ def parse_args() -> argparse.Namespace:
         default=[],
         metavar="ID=LABEL",
         help="Optional display label for a group; repeat as needed.",
+    )
+    parser.add_argument(
+        "--trace-root",
+        help=(
+            "Canonical trace store using YYYY-MM-DD/SCENE/*.trace.json(.gz). "
+            "The directory may be empty; scenes are discovered automatically."
+        ),
     )
     parser.add_argument(
         "--pattern",
@@ -91,7 +99,7 @@ def split_assignment(raw: str, kind: str) -> tuple[str, str]:
     value = value.strip()
     if not key or not value:
         raise BuildError(f"Invalid {kind} {raw!r}; ID and value must be non-empty")
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", key):
+    if not GROUP_PATTERN.fullmatch(key):
         raise BuildError(
             f"Invalid group ID {key!r}; use 1-64 letters, digits, dot, underscore, or hyphen"
         )
@@ -128,7 +136,10 @@ def validate_output(raw_output: str) -> Path:
 
 
 def collect_sources(
-    raw_groups: list[str], output: Path, patterns: tuple[str, ...]
+    raw_groups: list[str],
+    raw_trace_root: str | None,
+    output: Path,
+    patterns: tuple[str, ...],
 ) -> OrderedDict[str, list[Path]]:
     groups: OrderedDict[str, list[Path]] = OrderedDict()
     for raw in raw_groups:
@@ -137,7 +148,9 @@ def collect_sources(
         if not source.exists():
             raise BuildError(f"Trace source does not exist: {source}")
         if source == output or is_within(source, output):
-            raise BuildError(f"Trace source cannot be inside the generated output: {source}")
+            raise BuildError(
+                f"Trace source cannot be inside the generated output: {source}"
+            )
         files: Iterable[Path]
         if source.is_file():
             files = [source]
@@ -150,19 +163,68 @@ def collect_sources(
             raise BuildError(f"Trace source is neither a file nor directory: {source}")
         groups.setdefault(group, []).extend(files)
 
+    if raw_trace_root:
+        trace_root = Path(raw_trace_root).expanduser().resolve()
+        if not trace_root.exists():
+            raise BuildError(f"Trace root does not exist: {trace_root}")
+        if not trace_root.is_dir():
+            raise BuildError(f"Trace root is not a directory: {trace_root}")
+        if trace_root == output or is_within(trace_root, output):
+            raise BuildError(
+                f"Trace root cannot be inside the generated output: {trace_root}"
+            )
+
+        found: set[Path] = set()
+        for pattern in patterns:
+            found.update(path for path in trace_root.rglob(pattern) if path.is_file())
+        for path in sorted(found):
+            relative = path.relative_to(trace_root)
+            if len(relative.parts) < 3:
+                raise BuildError(f"Trace is outside YYYY-MM-DD/SCENE layout: {path}")
+            date_name, scene = relative.parts[:2]
+            if not valid_date_name(date_name):
+                raise BuildError(f"Trace date directory must use YYYY-MM-DD: {path}")
+            if not GROUP_PATTERN.fullmatch(scene):
+                raise BuildError(
+                    f"Invalid scene directory {scene!r} in {path}; use 1-64 letters, "
+                    "digits, dot, underscore, or hyphen"
+                )
+            groups.setdefault(scene, []).append(path)
+
     for group, files in groups.items():
         unique = sorted(set(files), key=lambda path: str(path))
-        by_name: dict[str, Path] = {}
+        by_destination: dict[tuple[str, str], Path] = {}
         for path in unique:
-            previous = by_name.get(path.name)
+            timestamp_epoch, _ = infer_timestamp(path)
+            date_name = infer_storage_date(path, timestamp_epoch)
+            destination = (date_name, path.name)
+            previous = by_destination.get(destination)
             if previous is not None and previous != path:
                 raise BuildError(
-                    f"Group {group!r} contains duplicate filename {path.name!r}: "
-                    f"{previous} and {path}. Rename one file or use separate groups."
+                    f"Group {group!r} contains duplicate filename {path.name!r} "
+                    f"for {date_name}: {previous} and {path}. Rename one file or "
+                    "use separate scenes."
                 )
-            by_name[path.name] = path
+            by_destination[destination] = path
         groups[group] = unique
     return groups
+
+
+def valid_date_name(value: str) -> bool:
+    if not DATE_PATTERN.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def date_from_path(source: Path) -> str | None:
+    for parent in source.parents:
+        if valid_date_name(parent.name):
+            return parent.name
+    return None
 
 
 def infer_rank(filename: str) -> str:
@@ -172,7 +234,9 @@ def infer_rank(filename: str) -> str:
     match = re.search(r"TP-(\d+)-DP-(\d+)", filename, flags=re.IGNORECASE)
     if match:
         return f"TP{match.group(1)}"
-    match = re.search(r"(?:^|[-_.])rank[-_.]?(\d+)(?:[-_.]|$)", filename, flags=re.IGNORECASE)
+    match = re.search(
+        r"(?:^|[-_.])rank[-_.]?(\d+)(?:[-_.]|$)", filename, flags=re.IGNORECASE
+    )
     if match:
         return f"rank{match.group(1)}"
     name = filename
@@ -183,13 +247,44 @@ def infer_rank(filename: str) -> str:
 
 
 def infer_timestamp(source: Path) -> tuple[float, str]:
-    """Prefer a Unix timestamp embedded in the filename, then use source mtime."""
+    """Prefer a filename timestamp, then a matching mtime or the date directory."""
     match = re.search(r"(?<!\d)(\d{10}(?:\.\d+)?)(?!\d)", source.name)
     if match:
         timestamp = float(match.group(1))
         if MIN_TRACE_EPOCH <= timestamp < MAX_TRACE_EPOCH:
             return timestamp, "filename"
-    return source.stat().st_mtime, "mtime"
+
+    for pattern, date_format in (
+        (r"(?<!\d)(\d{8}T\d{6}Z?)(?!\d)", "%Y%m%dT%H%M%SZ"),
+        (r"(?<!\d)(\d{8}T\d{6})(?!\d)", "%Y%m%dT%H%M%S"),
+    ):
+        match = re.search(pattern, source.name, flags=re.IGNORECASE)
+        if match:
+            raw = match.group(1).upper()
+            if not raw.endswith("Z") and date_format.endswith("Z"):
+                raw += "Z"
+            try:
+                parsed = datetime.strptime(raw, date_format).replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                continue
+            return parsed.timestamp(), "filename"
+
+    mtime = source.stat().st_mtime
+    date_name = date_from_path(source)
+    if date_name is None:
+        return mtime, "mtime"
+    if datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d") == date_name:
+        return mtime, "mtime"
+    parsed_date = datetime.strptime(date_name, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return parsed_date.timestamp(), "date-folder"
+
+
+def infer_storage_date(source: Path, timestamp_epoch: float) -> str:
+    return date_from_path(source) or datetime.fromtimestamp(
+        timestamp_epoch, tz=timezone.utc
+    ).strftime("%Y-%m-%d")
 
 
 def validate_trace(path: Path) -> None:
@@ -238,21 +333,27 @@ def build_stage(
     manifest_groups: list[dict[str, object]] = []
     traces: list[dict[str, object]] = []
     for group, paths in groups.items():
-        group_dir = data_dir / group
         for source in paths:
             validate_trace(source)
-            part_names = write_parts(source, group_dir, chunk_bytes)
             timestamp_epoch, timestamp_source = infer_timestamp(source)
+            storage_date = infer_storage_date(source, timestamp_epoch)
+            group_dir = data_dir / storage_date / group
+            part_names = write_parts(source, group_dir, chunk_bytes)
+            trace_id = f"{group}/{storage_date}/{source.name}"
             traces.append(
                 {
+                    "id": trace_id,
                     "group": group,
                     "rank": infer_rank(source.name),
                     "file": source.name,
                     "size": source.stat().st_size,
                     "timestamp_epoch": timestamp_epoch,
                     "timestamp_source": timestamp_source,
+                    "storage_date": storage_date,
                     "encoding": "gzip" if source.name.endswith(".gz") else "identity",
-                    "parts": [f"data/{group}/{name}" for name in part_names],
+                    "parts": [
+                        f"data/{storage_date}/{group}/{name}" for name in part_names
+                    ],
                 }
             )
         manifest_groups.append(
@@ -268,6 +369,7 @@ def build_stage(
         "site_title": title,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "chunk_bytes": chunk_bytes,
+        "storage_layout": "date/scene",
         "groups": manifest_groups,
         "traces": traces,
     }
@@ -312,8 +414,10 @@ def main() -> int:
         if not template.is_file():
             raise BuildError(f"Viewer template not found: {template}")
         patterns = tuple(args.pattern) if args.pattern else DEFAULT_PATTERNS
-        labels = dict(split_assignment(raw, "--group-label") for raw in args.group_label)
-        groups = collect_sources(args.group, output, patterns)
+        labels = dict(
+            split_assignment(raw, "--group-label") for raw in args.group_label
+        )
+        groups = collect_sources(args.group, args.trace_root, output, patterns)
         unknown_labels = sorted(set(labels) - set(groups))
         if unknown_labels:
             raise BuildError(
@@ -322,7 +426,9 @@ def main() -> int:
             )
 
         output.parent.mkdir(parents=True, exist_ok=True)
-        stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.build-", dir=output.parent))
+        stage = Path(
+            tempfile.mkdtemp(prefix=f".{output.name}.build-", dir=output.parent)
+        )
         try:
             manifest = build_stage(
                 stage=stage,
