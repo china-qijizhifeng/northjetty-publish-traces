@@ -374,6 +374,20 @@ class StaticHandler(SimpleHTTPRequestHandler):
     verbose = False
     allow_listing = False
 
+    def end_headers(self) -> None:
+        """Prevent stale viewer shells while keeping immutable trace parts cacheable."""
+        request_path = urllib.parse.urlsplit(self.path).path.lower()
+        fresh_path = request_path in ("", "/") or request_path.endswith((".html", ".json"))
+        has_cache_header = any(
+            header.lower().startswith(b"cache-control:")
+            for header in getattr(self, "_headers_buffer", [])
+        )
+        if fresh_path and not has_cache_header:
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def list_directory(self, path: str):  # type: ignore[override]
         if self.allow_listing:
             return super().list_directory(path)

@@ -19,7 +19,33 @@ python3 scripts/build_trace_site.py \
 
 ## Build with traces
 
-Each group source may be a file or directory. Directory discovery is recursive.
+Prefer a single runtime store with deterministic date and scene directories:
+
+```text
+/absolute/path/to/trace-root/YYYY-MM-DD/SCENE/*.trace.json.gz
+```
+
+Copy incoming traces into that store without overwriting existing data, then build all
+discovered scenes:
+
+```bash
+python3 scripts/add_traces.py \
+  --trace-root /absolute/path/to/trace-root \
+  --scene prefill \
+  /absolute/path/to/incoming-traces
+
+python3 scripts/build_trace_site.py \
+  --output /absolute/path/to/trace-site \
+  --title "Model X traces" \
+  --trace-root /absolute/path/to/trace-root
+```
+
+The store may be empty. Once it contains traces, every matching file must be under a
+valid `YYYY-MM-DD/SCENE/` path. Capture jobs may write directly to that destination to
+avoid retaining a second copy.
+
+For legacy or ad hoc layouts, each group source may instead be a file or directory.
+Directory discovery is recursive.
 
 ```bash
 python3 scripts/build_trace_site.py \
@@ -72,6 +98,9 @@ python3 scripts/nj-publish.py stop team-torch-trace
 
 Rebuilding the same generated directory updates a running static route after refresh.
 For large sites, finish the atomic rebuild before asking viewers to refresh.
+The bundled static handler sends `Cache-Control: no-store` for the viewer HTML and
+`manifest.json`, while trace part files remain cacheable. Restart routes that were
+started by an older publisher process so the updated handler is loaded.
 
 ## Security and capacity
 

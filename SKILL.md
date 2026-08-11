@@ -1,6 +1,6 @@
 ---
 name: northjetty-publish-traces
-description: Build a zero-data or runtime-populated browser viewer for PyTorch profiler and Chrome trace files, split large traces into NorthJetty-safe chunks, validate the generated static site, and optionally publish or manage an authenticated NorthJetty route backed by Perfetto. Use when Codex needs to initialize an empty trace viewer, share `.trace.json` or `.trace.json.gz` files, create a trace manifest grouped by scenario or rank, reproduce the team's NorthJetty Torch Trace workflow, or start, inspect, update, or stop a NorthJetty trace site.
+description: Organize runtime PyTorch profiler and Chrome trace files in a date/scene store, build a zero-data or runtime-populated browser viewer, split large traces into NorthJetty-safe chunks, validate the generated static site, and optionally publish or manage a NorthJetty route backed by Perfetto. Use when Codex needs to initialize an empty trace viewer, archive or share `.trace.json` or `.trace.json.gz` files, create a date-grouped trace manifest, reproduce the team's NorthJetty Torch Trace workflow, or start, inspect, update, or stop a NorthJetty trace site.
 ---
 
 # NorthJetty trace publishing
@@ -22,6 +22,7 @@ Create a portable static trace viewer without bundling trace data. Treat traces 
 Resolve `SKILL_DIR` to the directory containing this `SKILL.md`, then use:
 
 - `scripts/build_trace_site.py` to initialize or rebuild a site.
+- `scripts/add_traces.py` to copy runtime traces into a canonical date/scene store.
 - `scripts/validate_trace_site.py` to check its manifest and all chunks.
 - `scripts/nj-publish.py` with sibling `scripts/njsite.py` to manage NorthJetty.
 - `assets/index.html` as the generic zero-data Viewer template.
@@ -31,8 +32,10 @@ Read [references/operations.md](references/operations.md) before publishing, cha
 ## Build workflow
 
 1. Resolve the requested output directory and trace sources. If no trace source was supplied, build an empty viewer without asking for placeholder data.
-2. For trace-backed builds, inspect only the supplied paths. Prefer `.trace.json.gz`; raw `.trace.json` also works.
-3. Build the site:
+2. Prefer one runtime trace root with the layout `YYYY-MM-DD/SCENE/*.trace.json(.gz)`. Keep this root outside the skill. If incoming traces are elsewhere, use `scripts/add_traces.py --trace-root ROOT --scene SCENE SOURCES...`; it copies without overwriting the source or an existing different destination.
+3. For trace-backed builds, inspect only the supplied paths. Prefer `.trace.json.gz`; raw `.trace.json` also works.
+   The builder records a timestamp for every trace, preferring a timestamp in the filename, then a matching source mtime, and finally the canonical date folder. The viewer exposes a searchable, date-grouped scene combobox plus compact rank and trace selectors, sorts newest first, and persists valid `scene`, `rank`, and `trace` selections in the URL.
+4. Build the site:
 
 ```bash
 python3 "$SKILL_DIR/scripts/build_trace_site.py" \
@@ -52,7 +55,16 @@ python3 "$SKILL_DIR/scripts/build_trace_site.py" \
   --group-label "decode=Decode"
 ```
 
-4. Validate every build:
+For the canonical store, let the builder discover date folders and scenes:
+
+```bash
+python3 "$SKILL_DIR/scripts/build_trace_site.py" \
+  --output /absolute/path/to/trace-site \
+  --title "Model traces" \
+  --trace-root /absolute/path/to/trace-root
+```
+
+5. Validate every build:
 
 ```bash
 python3 "$SKILL_DIR/scripts/validate_trace_site.py" /absolute/path/to/trace-site

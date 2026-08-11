@@ -15,9 +15,15 @@
 - Skill 仓库本身不包含任何 trace、生成分块或访问凭证。
 - 新环境没有 trace 时，也能生成 `0 groups / 0 traces` 的空 Viewer。
 - trace 只在运行时通过绝对路径传入，不会复制回 Skill 仓库。
+- 推荐使用统一的 `trace-root/YYYY-MM-DD/scene/` 原始 Trace 仓库；构建器会自动发现日期和场景。
+- 提供安全的归档脚本：只复制、不覆盖源文件，并按采集日期自动落盘。
 - 自动递归发现 `.trace.json` 和 `.trace.json.gz`。
 - 自动按 8,000,000 bytes 分块，避开当前 NorthJetty 单响应大小限制。
 - 支持按场景分组，并从文件名识别 `TP/PP`、`TP/DP` 或 `rank`。
+- Viewer 使用可搜索的场景下拉框，内部按浏览器本地日期分区并滚动；日期倒序，同一天按最新采集时间倒序。
+- Rank 与 Trace 使用紧凑下拉框；当前 `scene`、`rank`、`trace` 会写入 URL，刷新或分享链接后可恢复定位。
+- 发布器对 Viewer HTML 和 `manifest.json` 返回 `no-store`，但保留 trace 分块的正常缓存，避免 UI 更新后仍命中旧页面。
+- 构建时优先从文件名提取 Unix 时间戳；旧命名不带时间时，自动使用原始 trace 的 mtime。
 - 发布前校验 manifest、分块路径、分块大小和总字节数。
 - 默认建议使用 NorthJetty `--require-auth`。
 
@@ -71,6 +77,47 @@ python3 "$SKILL_DIR/scripts/build_trace_site.py" \
 
 ### 加入 trace
 
+推荐先建立一个唯一的原始 Trace 入口：
+
+```text
+/absolute/path/trace-root/
+├── 2026-08-10/
+│   ├── kimi-k3-prefill/
+│   │   └── *.trace.json.gz
+│   └── dsv4-decode/
+│       └── *.trace.json.gz
+└── 2026-08-11/
+    └── kimi-k3-prefill/
+        └── *.trace.json.gz
+```
+
+把已有文件安全复制到该目录。`--date auto` 会优先读取文件名里的采集时间，找不到时使用原文件 mtime；也可以显式传入 `--date 2026-08-11`：
+
+```bash
+TRACE_ROOT=/absolute/path/trace-root
+
+python3 "$SKILL_DIR/scripts/add_traces.py" \
+  --trace-root "$TRACE_ROOT" \
+  --scene kimi-k3-prefill \
+  --date auto \
+  /absolute/path/new-traces
+```
+
+归档脚本默认复制并保留原文件，不会覆盖已有的不同文件。正式采集任务也可以直接把 profiler 输出写入 `$TRACE_ROOT/$(date -u +%F)/<scene>/`，避免产生第二份原始数据。
+
+随后无需逐个编写 `--group`，构建器会把日期下的第二级目录自动识别为场景：
+
+```bash
+python3 "$SKILL_DIR/scripts/build_trace_site.py" \
+  --output "$TRACE_SITE" \
+  --title "Model Traces" \
+  --trace-root "$TRACE_ROOT"
+```
+
+`trace-root` 可以为空，此时仍会生成合法的零数据 Viewer。目录中只要存在 Trace，就必须遵守 `YYYY-MM-DD/SCENE/`；构建器会拒绝放错层级或非法日期，避免文件再次散落。
+
+如果暂时不能整理源目录，仍可使用原有的显式 group 方式：
+
 ```bash
 python3 "$SKILL_DIR/scripts/build_trace_site.py" \
   --output "$TRACE_SITE" \
@@ -82,6 +129,26 @@ python3 "$SKILL_DIR/scripts/build_trace_site.py" \
 ```
 
 同一 group 可以重复指定多个文件或目录。若使用其他命名方式，可通过重复的 `--pattern` 覆盖默认发现规则。
+
+### 日期与排序
+
+生成的 `manifest.json` 会为每条 trace 写入 `timestamp_epoch` 和 `timestamp_source`：
+
+- 文件名含 10 位 Unix 秒时间戳时，以它作为采集时间；
+- 文件名含 `YYYYMMDDTHHMMSSZ` 时，也会识别为采集时间；
+- 文件名没有时间戳时，优先保留同一日期内的原始 mtime；mtime 与日期目录冲突时，以日期目录为准；
+- 使用统一仓库时，页面日期以 `storage_date` 为准；具体采集时间仍按浏览器本地时区显示；
+- 场景先按日期分区、日期从新到旧，同一天按场景内最新 trace 的时间从新到旧；选中 rank 后，trace 列表采用同样的倒序规则。
+
+因此后续只需正常重建站点，新加入的 trace 会自动落到正确日期，不需要手工维护页面顺序。
+
+### 浏览与分享定位
+
+- 点击“场景”即可展开日期分组列表；直接输入场景名或 group id 可以本地搜索，也支持方向键、Enter 和 Escape。
+- 场景列表固定最大高度并独立滚动，trace 数量继续增长时不会挤占 Perfetto 的查看空间。
+- Rank 和 Trace 收在同一行；Trace 下拉框内部也按日期分组，并默认显示最新记录在前。
+- 页面把选择写入 `?scene=...&rank=...&trace=...`，同时保留 URL 中其他参数。复制当前地址即可把同一定位发给同事。
+- “收起选择”会把顶部区域压缩为单行，并在当前浏览器中记住状态。
 
 ### 校验
 
@@ -128,6 +195,7 @@ python3 "$SKILL_DIR/scripts/nj-publish.py" stop team-torch-trace
 ```
 
 站点发布后，重新构建同一个输出目录并刷新浏览器即可看到新 trace，通常不需要重建 route。
+新版发布器会让 HTML 与 manifest 每次重新获取；已由旧版发布器启动的 route 需要重启一次，新的缓存响应头才会生效。
 
 ## 生成目录
 
@@ -137,10 +205,14 @@ trace-site/
 ├── index.html
 ├── manifest.json
 └── data/
-    ├── prefill/
-    │   └── *.part000
-    └── decode/
-        └── *.part000
+    ├── 2026-08-10/
+    │   ├── prefill/
+    │   │   └── *.part000
+    │   └── decode/
+    │       └── *.part000
+    └── 2026-08-11/
+        └── prefill/
+            └── *.part000
 ```
 
 构建器只会替换空目录，或由它自己创建并带有 `.northjetty-trace-site` 标记的目录。它会拒绝覆盖无标记的非空目录，也拒绝把生成结果写进 Skill 自身。
@@ -161,6 +233,7 @@ trace-site/
 ├── assets/index.html
 ├── references/operations.md
 └── scripts/
+    ├── add_traces.py
     ├── build_trace_site.py
     ├── validate_trace_site.py
     ├── nj-publish.py

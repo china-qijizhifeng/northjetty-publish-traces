@@ -3,27 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<link rel="icon" href="data:,">
 <title>Torch Trace Viewer</title>
 <style>
   :root{
-    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2b3441;
-    --fg:#e6edf3; --dim:#8b949e; --accent:#4c9aff; --accent2:#3fb950;
+    color-scheme:dark;
+    --bg:#0d1117; --panel:#161b22; --panel2:#20262f; --panel3:#252d38; --border:#343d49;
+    --fg:#f0f3f6; --dim:#9aa4b2; --accent:#4c9aff; --accent-soft:rgba(76,154,255,.14); --accent2:#3fb950;
     --warn:#d29922; --err:#f85149; --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
     --sans:"IBM Plex Sans",system-ui,-apple-system,"Noto Sans SC",sans-serif;
+    --shadow:0 12px 32px rgba(0,0,0,.32),0 2px 8px rgba(0,0,0,.2);
   }
   @media (prefers-color-scheme:light){
-    :root{--bg:#f6f8fa;--panel:#fff;--panel2:#f0f3f6;--border:#d0d7de;--fg:#1f2328;--dim:#636c76;}
+    :root{color-scheme:light;--bg:#f6f8fa;--panel:#fff;--panel2:#f2f4f7;--panel3:#e9edf2;--border:#d0d7de;--fg:#1f2328;--dim:#66707d;--accent-soft:rgba(9,105,218,.10);--shadow:0 12px 32px rgba(31,35,40,.14),0 2px 8px rgba(31,35,40,.08)}
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);display:flex;flex-direction:column}
-  button{font:inherit;color:inherit}
-  button:focus-visible,#drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .browser{display:grid;gap:8px;padding:8px 18px 10px;border-bottom:1px solid var(--border);flex:0 0 auto;background:var(--panel)}
+  button,input,select{font:inherit;color:inherit}
+  button:focus-visible,input:focus-visible,select:focus-visible,#drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .browser{position:relative;z-index:20;display:grid;gap:8px;padding:8px 18px 10px;border-bottom:1px solid var(--border);flex:0 0 auto;background:var(--panel)}
   .browser-head{display:flex;align-items:center;gap:10px;min-width:0}
-  #site-title{flex:0 0 auto;font-size:12px}
+  #site-title{flex:0 0 auto;font-size:13px;line-height:20px}
+  .ui-version{flex:0 0 auto;padding:1px 6px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:9px;font-weight:700;line-height:16px}
   #compact-summary{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-family:var(--mono);font-size:11px}
-  #toggle-browser{flex:0 0 auto;margin-left:auto;padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);cursor:pointer;font-size:11px}
+  #toggle-browser{flex:0 0 auto;margin-left:auto;height:28px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);cursor:pointer;font-size:11px}
   #toggle-browser:hover{border-color:var(--accent);color:var(--accent)}
   .browser-content{display:grid;gap:8px}
   .browser.collapsed{gap:4px;padding:6px 12px}
@@ -35,30 +42,42 @@
   .browser.load-waiting #mini-load-bar{background:linear-gradient(90deg,var(--warn) 0 35%,#f0c968 50%,var(--warn) 65% 100%);background-size:220% 100%;animation:load-sweep 1.1s linear infinite}
   .browser.load-done #mini-load-bar{background:var(--accent2)}
   .browser.load-error #mini-load-bar{background:var(--err)}
-  .nav-row{display:grid;grid-template-columns:82px minmax(0,1fr);gap:10px;align-items:start}
-  .nav-label{display:flex;align-items:center;gap:7px;color:var(--dim);font-family:var(--mono);font-size:11px;line-height:28px}
-  .nav-label b{display:inline-grid;place-items:center;width:20px;height:20px;border:1px solid var(--border);border-radius:50%;font-size:10px;line-height:1}
-  .choices{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
-  .empty{color:var(--dim);font-size:12px;line-height:28px}
-  .group,.rk,.trace{position:relative;overflow:hidden;background:var(--panel2);border:1px solid var(--border);border-radius:7px;cursor:pointer;transition:.12s}
-  .group{--tone:var(--accent);display:grid;gap:1px;padding:5px 9px;text-align:left}
-  .group.mm{--tone:var(--accent2)}
-  .group.dp{--tone:var(--warn)}
-  .group:hover,.group.active{border-color:var(--tone);color:var(--tone)}
-  .group.active{box-shadow:inset 0 -2px var(--tone)}
-  .group-name{font-size:11px;font-weight:650;white-space:nowrap}
-  .group-meta{color:var(--dim);font-family:var(--mono);font-size:9px}
-  .rk{min-width:52px;padding:5px 8px;font-family:var(--mono);font-size:11px}
-  .rk:hover,.rk.active{border-color:var(--accent);color:var(--accent)}
-  .rk.active{box-shadow:inset 0 -2px var(--accent)}
-  .count{display:inline-grid;place-items:center;min-width:16px;height:16px;margin-left:5px;padding:0 4px;border-radius:8px;background:var(--border);color:var(--fg);font-size:9px}
-  .trace{min-width:154px;max-width:300px;padding:5px 9px;text-align:left}
-  .trace:hover,.trace.active{border-color:var(--accent);color:var(--accent)}
-  .trace.active{box-shadow:inset 0 -2px var(--accent)}
-  .trace.done{border-color:var(--accent2)}
-  .trace-main{display:block;font-family:var(--mono);font-size:11px;white-space:nowrap}
-  .trace-meta{display:block;margin-top:1px;color:var(--dim);font-family:var(--mono);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .p{position:absolute;left:0;bottom:0;height:2px;background:var(--accent);width:0;transition:width .08s}
+  .filter-bar{display:grid;grid-template-columns:minmax(260px,1.65fr) minmax(110px,.55fr) minmax(230px,1.25fr) auto;gap:8px;align-items:end}
+  .filter-field{display:grid;gap:4px;min-width:0}
+  .filter-label{display:block;color:var(--dim);font-size:11px;font-weight:600;line-height:14px}
+  .control,.combobox-control{width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--panel2);transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+  .control{padding:0 32px 0 10px;color:var(--fg);cursor:pointer;white-space:nowrap;text-overflow:ellipsis}
+  .control:hover:not(:disabled),.combobox-control:hover{border-color:#596576;background:var(--panel3)}
+  .control:disabled{color:var(--dim);cursor:not-allowed;opacity:.68}
+  .control.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .control.done{border-color:var(--accent2)}
+  .combobox{position:relative;min-width:0}
+  .combobox-control{display:grid;grid-template-columns:minmax(0,1fr) 34px;overflow:hidden}
+  #scene-input{min-width:0;width:100%;height:34px;padding:0 4px 0 10px;border:0;outline:0;background:transparent;color:var(--fg);font-size:13px;text-overflow:ellipsis}
+  #scene-input::placeholder{color:var(--dim)}
+  #scene-input:disabled{cursor:not-allowed}
+  #scene-toggle{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;background:transparent;color:var(--dim);cursor:pointer}
+  #scene-toggle:hover{color:var(--fg)}
+  #scene-toggle svg{width:14px;height:14px;transition:transform .18s ease}
+  .combobox.open .combobox-control{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .combobox.open #scene-toggle svg{transform:rotate(180deg)}
+  .scene-popover{position:absolute;z-index:50;top:calc(100% + 6px);left:0;width:max(100%,420px);max-width:min(620px,calc(100vw - 36px));max-height:384px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--panel);box-shadow:var(--shadow);overscroll-behavior:contain;animation:popover-in .16s ease-out}
+  .scene-popover[hidden]{display:none}
+  @keyframes popover-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+  .scene-empty{padding:18px 12px;color:var(--dim);font-size:12px;text-align:center}
+  .scene-date + .scene-date{border-top:1px solid var(--border)}
+  .scene-date-head{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;gap:12px;padding:7px 10px;background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(8px);color:var(--dim);font-family:var(--mono);font-size:10px;font-weight:650}
+  .scene-option{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;width:100%;padding:8px 10px;border:0;border-top:1px solid color-mix(in srgb,var(--border) 58%,transparent);background:transparent;color:var(--fg);cursor:pointer;text-align:left}
+  .scene-option:hover,.scene-option.keyboard{background:var(--panel2)}
+  .scene-option.selected{background:var(--accent-soft)}
+  .scene-option.selected .scene-name{color:var(--accent)}
+  .scene-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650}
+  .scene-time{color:var(--dim);font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .scene-id{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-family:var(--mono);font-size:10px}
+  .scene-counts{color:var(--dim);font-family:var(--mono);font-size:10px;white-space:nowrap}
+  .filter-action{display:grid;gap:4px}
+  #drop{display:flex;align-items:center;justify-content:center;height:36px;padding:0 12px;border:1px dashed var(--border);border-radius:6px;background:var(--panel2);color:var(--dim);cursor:pointer;font-size:12px;white-space:nowrap;transition:.18s ease}
+  #drop:hover,#drop.hot{border-color:var(--accent);background:var(--accent-soft);color:var(--fg)}
   .loader{display:grid;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
   .loader[hidden]{display:none}
   .load-head{display:flex;align-items:center;gap:12px;min-width:0}
@@ -77,10 +96,8 @@
   .loader.error #load-percent{color:var(--err)}
   .loader.error #load-bar{background:var(--err)}
   @keyframes load-sweep{to{background-position:-220% 0}}
-  .tools{display:flex;align-items:center;gap:10px;padding-top:7px;border-top:1px solid var(--border);min-width:0}
-  #selection{color:var(--dim);font-size:11px;white-space:nowrap}
-  #drop{flex:0 0 auto;font-size:11px;color:var(--dim);border:1px dashed var(--border);border-radius:7px;padding:5px 10px;cursor:pointer}
-  #drop.hot{border-color:var(--accent);color:var(--fg)}
+  .tools{display:flex;align-items:center;gap:10px;min-width:0}
+  #selection{min-width:0;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #log{min-width:0;margin-left:auto;color:var(--dim);font-family:var(--mono);font-size:11px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #stage{flex:1 1 auto;position:relative;min-height:0}
   #pf{width:100%;height:100%;border:0;display:block}
@@ -88,39 +105,216 @@
         color:var(--dim);font-size:14px;gap:8px;text-align:center;padding:20px}
   #hint code{font-family:var(--mono);background:var(--panel2);padding:1px 5px;border-radius:4px}
   a{color:var(--accent)}
-  @media (max-width:720px){
+  @media (max-width:900px){
+    .filter-bar{grid-template-columns:minmax(240px,1.5fr) minmax(110px,.65fr) minmax(220px,1.15fr)}
+    .filter-action{grid-column:1/-1}
+    .filter-action .filter-label{display:none}
+  }
+  @media (max-width:680px){
     .browser{padding:9px 12px}
     .browser.collapsed{padding:6px 10px}
-    .nav-row{grid-template-columns:1fr;gap:3px}
-    .nav-label{line-height:22px}
+    .filter-bar{grid-template-columns:1fr 1fr}
+    .scene-field,.trace-field,.filter-action{grid-column:1/-1}
+    .scene-popover{position:fixed;top:auto;left:12px;right:12px;bottom:12px;width:auto;max-width:none;max-height:min(62vh,480px)}
     .tools{align-items:flex-start;flex-wrap:wrap}
     #log{order:3;flex-basis:100%;margin-left:0;text-align:left}
+  }
+
+  /* NorthGate-inspired V3 visual layer */
+  :root{
+    color-scheme:light;
+    --bg:#f7f7f6;--panel:#ffffff;--panel2:#fafaf9;--panel3:#f1f0ee;
+    --border:#e4e2de;--border-strong:#cfcac3;--fg:#282623;--dim:#78736c;
+    --accent:#1769d2;--accent-hover:#105bb9;--accent-soft:#eaf2ff;--accent2:#218358;
+    --warn:#a66a13;--err:#c83f49;--shadow:0 16px 40px rgba(46,42,36,.14),0 3px 10px rgba(46,42,36,.08);
+    --mono:"Geist Mono Variable","SFMono-Regular",Consolas,monospace;
+    --sans:"Inter Variable",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      color-scheme:dark;
+      --bg:#141312;--panel:#1d1b19;--panel2:#24221f;--panel3:#2d2a26;
+      --border:#3b3833;--border-strong:#575149;--fg:#f2f0ed;--dim:#aaa39a;
+      --accent:#76a9fa;--accent-hover:#91bbff;--accent-soft:rgba(69,132,230,.16);--accent2:#62c493;
+      --warn:#e1a34a;--err:#ef7a82;--shadow:0 18px 48px rgba(0,0,0,.4),0 3px 12px rgba(0,0,0,.24);
+    }
+  }
+  body{background:var(--bg);font-family:var(--sans);font-optical-sizing:auto}
+  .sr-only,.tools{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+  .browser{z-index:30;display:block;padding:0;border-color:var(--border);background:var(--panel);box-shadow:0 1px 3px rgba(46,42,36,.04)}
+  .browser-head{display:flex;align-items:center;gap:14px;min-height:68px;padding:9px 16px}
+  .brand{display:flex;align-items:center;gap:10px;flex:0 0 245px;min-width:0}
+  .brand-mark{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid color-mix(in srgb,var(--accent) 32%,var(--border));border-radius:10px;background:var(--accent-soft);color:var(--accent)}
+  .brand-mark svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .brand-copy{display:grid;gap:2px;min-width:0}
+  .brand-copy strong{font-size:14px;font-weight:650;line-height:18px;letter-spacing:-.01em}
+  #compact-summary{display:block;max-width:185px;color:var(--dim);font-family:var(--sans);font-size:11px;line-height:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filter-bar{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
+  .filter-field{display:block;min-width:0}
+  .scene-field{flex:1 1 390px;max-width:560px}
+  .rank-field{flex:0 0 144px}
+  .trace-field{flex:1 1 260px;max-width:360px}
+  .combobox,.select-shell{position:relative;min-width:0}
+  .combobox-control,.select-shell{display:grid;grid-template-columns:36px minmax(0,1fr) 34px;align-items:center;width:100%;height:48px;border:1px solid var(--border);border-radius:8px;background:var(--panel2);box-shadow:0 1px 2px rgba(46,42,36,.03);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
+  .combobox-control:hover,.select-shell:hover{border-color:var(--border-strong);background:var(--panel)}
+  .combobox.open .combobox-control,.select-shell:focus-within{border-color:var(--accent);background:var(--panel);box-shadow:0 0 0 3px var(--accent-soft)}
+  .control-icon{display:grid;place-items:center;color:var(--dim)}
+  .control-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .control-copy{display:grid;align-content:center;gap:1px;min-width:0}
+  .control-kicker{display:block;color:var(--dim);font-size:10px;font-weight:600;line-height:12px;letter-spacing:.01em}
+  #scene-input,.control{display:block;width:100%;height:20px;min-width:0;padding:0;border:0!important;outline:0;background:transparent!important;box-shadow:none!important;color:var(--fg);font-family:var(--sans);font-size:13px;line-height:20px;white-space:nowrap;text-overflow:ellipsis}
+  #scene-input::placeholder{color:var(--dim)}
+  #scene-input:disabled,.control:disabled{cursor:not-allowed;opacity:.55}
+  .control{appearance:none;cursor:pointer}
+  .control option,.control optgroup{background:var(--panel);color:var(--fg)}
+  #scene-toggle{display:grid;place-items:center;width:34px;height:46px;padding:0;border:0;background:transparent;color:var(--dim);cursor:pointer}
+  #scene-toggle:hover{color:var(--fg)}
+  #scene-toggle svg{width:14px;height:14px;transition:transform .2s ease}
+  .combobox.open #scene-toggle svg{transform:rotate(180deg)}
+  .control-chevron{justify-self:center;width:14px;height:14px;fill:none;stroke:var(--dim);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .header-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  #drop,#toggle-browser{display:flex;align-items:center;justify-content:center;gap:6px;height:40px;margin:0;padding:0 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--dim);cursor:pointer;font-size:12px;font-weight:550;transition:border-color .2s ease,background .2s ease,color .2s ease}
+  #drop{width:auto;min-width:70px;border-style:solid}
+  #toggle-browser{width:40px;min-width:40px;padding:0}
+  #drop:hover,#drop.hot,#toggle-browser:hover{border-color:var(--border-strong);background:var(--panel3);color:var(--fg)}
+  #drop svg,#toggle-browser svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  #toggle-browser svg{transition:transform .2s ease}
+  #toggle-browser.is-collapsed svg{transform:rotate(180deg)}
+  .browser-content{display:block}
+  .browser.collapsed{padding:0}
+  .browser.collapsed .browser-head{min-height:48px;padding:5px 12px}
+  .browser.collapsed .filter-bar,.browser.collapsed #drop{display:none}
+  .browser.collapsed .brand{flex:1 1 auto}
+  .browser.collapsed .brand-mark{width:34px;height:34px;flex-basis:34px;border-radius:8px}
+  .browser.collapsed .brand-mark svg{width:19px;height:19px}
+  .mini-load{height:3px;border-radius:0;background:var(--panel3)}
+
+  .scene-popover{top:calc(100% + 8px);left:0;width:max(100%,560px);max-width:min(640px,calc(100vw - 32px));max-height:460px;padding:6px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:var(--shadow);scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent;animation:popover-v3 .2s ease-out}
+  @keyframes popover-v3{from{opacity:0;transform:translateY(-5px) scale(.992)}to{opacity:1;transform:translateY(0) scale(1)}}
+  .scene-empty{padding:28px 16px;color:var(--dim);font-size:13px}
+  .scene-date{padding:0 0 5px}
+  .scene-date + .scene-date{border:0}
+  .scene-date-head{top:-6px;margin:0;padding:9px 10px 7px;background:color-mix(in srgb,var(--panel) 94%,transparent);color:var(--dim);font-family:var(--sans);font-size:11px;font-weight:600;backdrop-filter:blur(10px)}
+  .scene-option{grid-template-areas:"name time" "id counts";grid-template-columns:minmax(0,1fr) auto;gap:3px 16px;width:100%;margin:1px 0;padding:9px 10px;border:0;border-radius:7px;background:transparent;transition:background .16s ease,box-shadow .16s ease}
+  .scene-option:hover,.scene-option.keyboard{background:var(--panel3)}
+  .scene-option.selected{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
+  .scene-option.selected .scene-name{color:var(--accent)}
+  .scene-name{grid-area:name;font-size:13px;font-weight:600;line-height:18px}
+  .scene-time{grid-area:time;align-self:center;color:var(--dim);font-family:var(--sans);font-size:11px;font-variant-numeric:tabular-nums}
+  .scene-id{grid-area:id;color:var(--dim);font-family:var(--mono);font-size:10px;line-height:15px}
+  .scene-counts{grid-area:counts;align-self:center;color:var(--dim);font-family:var(--sans);font-size:10px;font-variant-numeric:tabular-nums}
+
+  .loader{grid-template-columns:minmax(220px,320px) minmax(180px,1fr) minmax(220px,360px);align-items:center;gap:14px;margin:0 16px 10px;padding:8px 11px;border-color:var(--border);border-radius:8px;background:var(--panel2)}
+  .load-head{gap:8px}.load-track{height:6px}.load-detail{min-width:0}
+  #load-title{font-size:12px;font-weight:600}#load-percent{font-size:11px}
+  #stage{background:var(--bg)}
+  #hint{gap:8px;color:var(--dim);transition:opacity .18s ease}
+  .browser:has(.combobox.open) + #stage #hint{opacity:0}
+  .hint-icon{display:grid;place-items:center;width:48px;height:48px;margin-bottom:5px;border:1px solid var(--border);border-radius:14px;background:var(--panel);color:var(--accent);box-shadow:0 6px 20px rgba(46,42,36,.06)}
+  .hint-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+  .hint-main{color:var(--fg);font-size:16px;font-weight:600;letter-spacing:-.01em}
+  .hint-detail{max-width:620px;color:var(--dim);font-size:12px!important;line-height:19px}
+  .hint-note{margin-top:3px;color:color-mix(in srgb,var(--dim) 82%,transparent);font-size:11px;line-height:17px}
+  #hint code{border:1px solid var(--border);background:var(--panel);padding:2px 6px;border-radius:5px}
+
+  @media (max-width:1120px){
+    .browser-head{gap:10px}.brand{flex-basis:190px}.brand-mark{width:36px;height:36px;flex-basis:36px}
+    #compact-summary{max-width:135px}.scene-field{min-width:250px}.trace-field{max-width:290px}.rank-field{flex-basis:126px}
+  }
+  @media (max-width:900px){
+    .browser-head{flex-wrap:wrap;padding:9px 12px}
+    .brand{flex:1 1 calc(100% - 120px)}.header-actions{margin-left:auto}
+    .filter-bar{order:3;flex-basis:100%;max-width:none}.scene-field{max-width:none}.trace-field{max-width:none}
+    .loader{grid-template-columns:1fr;margin:0 12px 9px;gap:6px}
+  }
+  @media (max-width:680px){
+    .browser{padding:0}.browser-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;padding:9px 10px}
+    .brand{grid-column:1}.header-actions{grid-column:2;margin:0}
+    .filter-bar{grid-column:1/-1;display:grid;grid-template-columns:110px minmax(0,1fr);gap:7px;width:100%}
+    .scene-field{grid-column:1/-1;min-width:0}.rank-field{grid-column:1;min-width:0}.trace-field{grid-column:2;min-width:0}
+    .combobox-control,.select-shell{height:46px}.brand{min-width:0}.brand-copy strong{font-size:13px}#compact-summary{max-width:210px}
+    #drop{width:40px;min-width:40px;padding:0}#drop span{display:none}
+    .scene-popover{position:fixed;top:auto;left:10px;right:10px;bottom:10px;width:auto;max-width:none;max-height:min(68vh,560px);border-radius:12px}
+    .scene-option{gap:3px 10px}.scene-name{font-size:12px}.scene-time,.scene-counts{font-size:10px}
+    .browser.collapsed .browser-head{display:flex;min-height:48px;padding:5px 10px}.browser.collapsed .header-actions{margin-left:auto}
   }
 </style>
 </head>
 <body>
 <section class="browser" id="browser" aria-label="Trace 选择器">
   <div class="browser-head">
-    <strong id="site-title">Torch Trace Viewer</strong>
-    <span id="compact-summary">尚未选择 trace</span>
-    <button id="toggle-browser" type="button" aria-expanded="true" aria-controls="browser-content">收起选择 ▴</button>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4.1 12 2.3-6H21"/></svg>
+      </div>
+      <div class="brand-copy">
+        <strong>Trace Explorer</strong>
+        <span id="compact-summary">尚未选择 trace</span>
+      </div>
+      <span id="site-title" class="sr-only">Torch Trace Viewer</span>
+    </div>
+    <div class="filter-bar" id="filter-bar" aria-label="Trace 筛选条件">
+      <div class="filter-field scene-field">
+      <div class="combobox" id="scene-combobox">
+        <div class="combobox-control">
+          <span class="control-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m12 3-8 4.5 8 4.5 8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/></svg>
+          </span>
+          <span class="control-copy">
+            <label class="control-kicker" for="scene-input">场景</label>
+            <input id="scene-input" type="text" role="combobox" autocomplete="off" spellcheck="false"
+                   aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false"
+                   aria-controls="scene-list" placeholder="加载 manifest…" disabled>
+          </span>
+          <button id="scene-toggle" type="button" tabindex="-1" aria-label="展开场景列表" disabled>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="scene-popover" id="scene-popover" hidden>
+          <div id="scene-list" role="listbox" aria-label="场景列表"></div>
+        </div>
+      </div>
+    </div>
+    <div class="filter-field rank-field">
+      <div class="select-shell">
+        <span class="control-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg>
+        </span>
+        <span class="control-copy">
+          <label class="control-kicker" for="rank-select">Rank</label>
+          <select class="control" id="rank-select" disabled><option value="">先选场景</option></select>
+        </span>
+        <svg class="control-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+      </div>
+    </div>
+    <div class="filter-field trace-field">
+      <div class="select-shell">
+        <span class="control-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+        </span>
+        <span class="control-copy">
+          <label class="control-kicker" for="trace-select">Trace</label>
+          <select class="control" id="trace-select" disabled><option value="">先选 Rank</option></select>
+        </span>
+        <svg class="control-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+      </div>
+    </div>
+    </div>
+    <div class="header-actions">
+      <button id="drop" type="button" title="导入本地 trace" aria-label="导入本地 trace">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4h14v-4"/></svg>
+        <span>导入</span>
+      </button>
+      <input id="file" type="file" accept=".json,.gz,.pb,.perfetto-trace" hidden>
+      <button id="toggle-browser" type="button" aria-label="收起筛选栏" aria-expanded="true" aria-controls="filter-bar" title="收起筛选栏">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 14 5-5 5 5"/></svg>
+      </button>
+    </div>
   </div>
   <div class="mini-load" id="mini-load" hidden role="progressbar" aria-label="折叠状态下的 Trace 加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
     <div id="mini-load-bar"></div>
   </div>
   <div class="browser-content" id="browser-content">
-  <div class="nav-row">
-    <div class="nav-label"><b>1</b><span>场景</span></div>
-    <div class="choices" id="groups"><span class="empty">加载 manifest…</span></div>
-  </div>
-  <div class="nav-row">
-    <div class="nav-label"><b>2</b><span>Rank</span></div>
-    <div class="choices" id="ranks"><span class="empty">先选一个场景</span></div>
-  </div>
-  <div class="nav-row">
-    <div class="nav-label"><b>3</b><span>Trace</span></div>
-    <div class="choices" id="traces"><span class="empty">先选一个 rank</span></div>
-  </div>
   <div class="loader" id="loader" hidden aria-live="polite" aria-atomic="true">
     <div class="load-head">
       <strong id="load-title">准备加载 trace</strong>
@@ -134,25 +328,30 @@
   <div class="tools">
     <span id="selection">尚未选择 trace</span>
     <span id="log" role="status" aria-live="polite"></span>
-    <div id="drop" role="button" tabindex="0">拖入或选择本地 trace</div>
-    <input id="file" type="file" accept=".json,.gz,.pb,.perfetto-trace" hidden>
   </div>
   </div>
 </section>
 <div id="stage">
   <iframe id="pf" src="about:blank" title="Perfetto trace viewer"></iframe>
   <div id="hint">
-    <div class="hint-main">↑ 上方选择场景、rank 和 trace，Perfetto 会在这里打开</div>
-    <div class="hint-detail" style="font-size:12px">站点可以从零条 trace 开始；也可以从上方拖入本地 <code>.trace.json</code> 或 <code>.trace.json.gz</code></div>
+    <div class="hint-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4.1 12 2.3-6H21"/></svg>
+    </div>
+    <div class="hint-main">选择一个 Trace 开始分析</div>
+    <div class="hint-detail">从顶部依次选择场景、Rank 和 Trace；也可以导入本地 <code>.trace.json</code> 或 <code>.trace.json.gz</code></div>
   </div>
 </div>
 
 <script>
 const PERFETTO = "https://ui.perfetto.dev";
 const siteTitleEl = document.getElementById("site-title");
-const groupChoices = document.getElementById("groups");
-const rankChoices = document.getElementById("ranks");
-const traceChoices = document.getElementById("traces");
+const sceneCombobox = document.getElementById("scene-combobox");
+const sceneInput = document.getElementById("scene-input");
+const sceneToggle = document.getElementById("scene-toggle");
+const scenePopover = document.getElementById("scene-popover");
+const sceneList = document.getElementById("scene-list");
+const rankSelect = document.getElementById("rank-select");
+const traceSelect = document.getElementById("trace-select");
 const browserPanel = document.getElementById("browser");
 const compactSummary = document.getElementById("compact-summary");
 const toggleBrowser = document.getElementById("toggle-browser");
@@ -172,10 +371,16 @@ let iframe = document.getElementById("pf");
 const hint = document.getElementById("hint");
 const hintMain = hint.querySelector(".hint-main");
 const hintDetail = hint.querySelector(".hint-detail");
+let siteSummaryText = "Torch profiler traces";
+let currentSelectionText = "尚未选择 trace";
 function log(m){ if(logEl) logEl.textContent = m; }
+function refreshCompactSummary(){
+  compactSummary.textContent = browserPanel.classList.contains("collapsed") ? currentSelectionText : siteSummaryText;
+}
 function setSelection(text){
   selectionEl.textContent = text;
-  compactSummary.textContent = text;
+  currentSelectionText = text;
+  if(!activeFetch) refreshCompactSummary();
   if(!activeFetch){
     miniLoad.hidden = true;
     browserPanel.classList.remove("load-fetching","load-waiting","load-done","load-error");
@@ -271,11 +476,14 @@ async function fetchParts(tr, onProg, signal){
   return out.buffer;
 }
 
-const state = {byGroup:{}, groupMeta:{}, groupOrder:[], group:null, rank:null};
+const state = {
+  byGroup:Object.create(null), groupMeta:Object.create(null), groupOrder:[], groupRecords:[], filteredGroups:[],
+  group:null, rank:null, trace:null, rankLookup:new Map(), traceLookup:new Map(), sceneOpen:false, activeSceneIndex:-1
+};
 let activeTraceEl = null;
 let loadToken = 0;
 let activeFetch = null;
-const COLLAPSE_KEY = "northjetty-torch-trace-browser-collapsed";
+const COLLAPSE_KEY = "northjetty-torch-trace-browser-collapsed-v3";
 
 function groupLabel(group){
   const meta = state.groupMeta[group];
@@ -284,9 +492,11 @@ function groupLabel(group){
 
 function setBrowserCollapsed(collapsed, persist=true){
   browserPanel.classList.toggle("collapsed",collapsed);
+  toggleBrowser.classList.toggle("is-collapsed",collapsed);
   toggleBrowser.setAttribute("aria-expanded",String(!collapsed));
-  toggleBrowser.textContent = collapsed ? "展开选择 ▾" : "收起选择 ▴";
-  toggleBrowser.title = collapsed ? "展开场景、Rank 和 Trace 选择器" : "收起选择器，放大 Perfetto";
+  toggleBrowser.setAttribute("aria-label",collapsed ? "展开筛选栏" : "收起筛选栏");
+  toggleBrowser.title = collapsed ? "展开筛选栏" : "收起筛选栏，放大 Perfetto";
+  if(!activeFetch) refreshCompactSummary();
   if(persist){ try{ localStorage.setItem(COLLAPSE_KEY,collapsed?"1":"0"); }catch(e){} }
 }
 toggleBrowser.onclick=()=>setBrowserCollapsed(!browserPanel.classList.contains("collapsed"));
@@ -300,71 +510,251 @@ function cancelPendingLoad(){
 }
 
 function humanSize(bytes){ return `${(bytes/1e6).toFixed(1)} MB`; }
+function timestampFromFilename(filename){
+  const match = filename && filename.match(/(?:^|[^\d])(\d{10}(?:\.\d+)?)(?=[^\d]|$)/);
+  if(!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+function traceTimestamp(tr){
+  for(const key of ["timestamp_epoch","mtime_epoch"]){
+    const value = Number(tr && tr[key]);
+    if(Number.isFinite(value) && value > 0) return value;
+  }
+  return timestampFromFilename(tr && tr.file);
+}
+function localDateKey(timestamp){
+  if(timestamp === null) return "__unknown__";
+  const date = new Date(timestamp*1000);
+  const pad = value=>String(value).padStart(2,"0");
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+}
+function traceDateKey(tr){
+  const stored=String((tr && tr.storage_date) || "");
+  if(/^\d{4}-\d{2}-\d{2}$/.test(stored)) return stored;
+  return localDateKey(traceTimestamp(tr));
+}
+function dateLabel(dateKey,timestamp){
+  if(dateKey === "__unknown__") return "未知日期";
+  let date=timestamp === null ? null : new Date(timestamp*1000);
+  if(!date || localDateKey(timestamp)!==dateKey){
+    const [year,month,day]=dateKey.split("-").map(Number);
+    date=new Date(year,month-1,day,12,0,0);
+  }
+  const weekday = new Intl.DateTimeFormat("zh-CN",{weekday:"short"}).format(date);
+  return `${dateKey} · ${weekday}`;
+}
+function localTimeLabel(timestamp){
+  if(timestamp === null) return "未知时间";
+  return new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).format(new Date(timestamp*1000));
+}
+function compareTracesNewestFirst(a,b){
+  const ad=traceDateKey(a), bd=traceDateKey(b);
+  if(ad === "__unknown__" && bd !== "__unknown__") return 1;
+  if(ad !== "__unknown__" && bd === "__unknown__") return -1;
+  if(ad !== bd) return bd.localeCompare(ad);
+  const at = traceTimestamp(a), bt = traceTimestamp(b);
+  if(at === null && bt !== null) return 1;
+  if(at !== null && bt === null) return -1;
+  if(at !== null && bt !== null && at !== bt) return bt-at;
+  return (b.file||"").localeCompare(a.file||"",undefined,{numeric:true});
+}
 function traceLabel(tr, index, total){
   if(tr.label) return tr.label;
-  const stamp = tr.file && tr.file.match(/(\d{10}(?:\.\d+)?)/);
-  if(stamp){
-    const time = new Date(Number(stamp[1])*1000).toISOString().slice(11,19);
-    return `${total > 1 ? `Trace ${index+1} · ` : ""}${time} UTC`;
-  }
+  const timestamp = traceTimestamp(tr);
+  if(timestamp !== null) return `${localTimeLabel(timestamp)}${index === 0 && total > 1 ? " · 最新" : ""}`;
   return total > 1 ? `Trace ${index+1}` : "Trace";
 }
 function groupByRank(traces){
   const out = new Map();
-  for(const tr of traces){ if(!out.has(tr.rank)) out.set(tr.rank,[]); out.get(tr.rank).push(tr); }
+  for(const tr of traces){
+    const rank=String(tr.rank ?? "unknown");
+    if(!out.has(rank)) out.set(rank,[]);
+    out.get(rank).push(tr);
+  }
   return out;
 }
-function setEmpty(container, text){ container.innerHTML = ""; const el=document.createElement("span"); el.className="empty"; el.textContent=text; container.appendChild(el); }
+function traceKey(tr,index){ return String(tr.id || tr.file || (tr.parts && tr.parts[0]) || `trace-${index}`); }
+function setSelectPlaceholder(select,text){
+  select.innerHTML="";
+  const option=document.createElement("option"); option.value=""; option.textContent=text;
+  select.appendChild(option); select.value=""; select.disabled=true;
+  select.classList.remove("active","done");
+}
+function syncUrl(scene=state.group,rank=state.rank,trace=state.trace){
+  try{
+    const url=new URL(location.href);
+    for(const [key,value] of [["scene",scene],["rank",rank],["trace",trace]]){
+      if(value === null || value === undefined || value === "") url.searchParams.delete(key);
+      else url.searchParams.set(key,String(value));
+    }
+    history.replaceState(null,"",`${url.pathname}${url.search}${url.hash}`);
+  }catch(e){}
+}
+function renderSceneOptions(query=""){
+  const needle=query.trim().toLocaleLowerCase();
+  state.filteredGroups=state.groupRecords.filter(record=>{
+    if(!needle) return true;
+    const haystack=`${groupLabel(record.group)} ${record.group} ${record.dateKey}`.toLocaleLowerCase();
+    return haystack.includes(needle);
+  });
+  sceneList.innerHTML="";
+  if(!state.filteredGroups.length){
+    const empty=document.createElement("div"); empty.className="scene-empty";
+    empty.textContent=needle ? `没有匹配“${query.trim()}”的场景` : "当前没有已发布 trace";
+    sceneList.appendChild(empty); state.activeSceneIndex=-1; sceneInput.removeAttribute("aria-activedescendant"); return;
+  }
+  const dated=new Map();
+  for(const record of state.filteredGroups){
+    const key=record.dateKey;
+    if(!dated.has(key)) dated.set(key,{dateKey:key,timestamp:record.timestamp,records:[]});
+    dated.get(key).records.push(record);
+  }
+  let optionIndex=0;
+  for(const bucket of dated.values()){
+    const section=document.createElement("section"); section.className="scene-date";
+    const heading=document.createElement("div"); heading.className="scene-date-head";
+    const date=document.createElement("span"); date.textContent=dateLabel(bucket.dateKey,bucket.timestamp);
+    const count=document.createElement("span"); count.textContent=`${bucket.records.length} 场景`;
+    heading.append(date,count); section.appendChild(heading);
+    for(const record of bucket.records){
+      const index=optionIndex++;
+      const option=document.createElement("button"); option.type="button"; option.className="scene-option";
+      option.id=`scene-option-${index}`; option.dataset.index=String(index); option.dataset.group=record.group;
+      option.setAttribute("role","option"); option.setAttribute("aria-selected",String(record.group===state.group));
+      if(record.group===state.group) option.classList.add("selected");
+      const name=document.createElement("span"); name.className="scene-name"; name.textContent=groupLabel(record.group);
+      const time=document.createElement("span"); time.className="scene-time"; time.textContent=`最新 ${localTimeLabel(record.timestamp)}`;
+      const id=document.createElement("span"); id.className="scene-id"; id.textContent=record.group;
+      const counts=document.createElement("span"); counts.className="scene-counts"; counts.textContent=`${record.ranks} ranks · ${record.traces.length} traces`;
+      option.append(name,time,id,counts);
+      option.onmouseenter=()=>setActiveSceneOption(index,false);
+      option.onmousedown=e=>e.preventDefault();
+      option.onclick=()=>selectGroup(record.group);
+      section.appendChild(option);
+    }
+    sceneList.appendChild(section);
+  }
+  const selectedIndex=state.filteredGroups.findIndex(record=>record.group===state.group);
+  setActiveSceneOption(selectedIndex>=0 ? selectedIndex : 0,false);
+}
+function setActiveSceneOption(index,scroll=true){
+  const options=[...sceneList.querySelectorAll(".scene-option")];
+  if(!options.length){ state.activeSceneIndex=-1; sceneInput.removeAttribute("aria-activedescendant"); return; }
+  const next=Math.max(0,Math.min(options.length-1,index)); state.activeSceneIndex=next;
+  options.forEach((option,i)=>option.classList.toggle("keyboard",i===next));
+  sceneInput.setAttribute("aria-activedescendant",options[next].id);
+  if(scroll) options[next].scrollIntoView({block:"nearest"});
+}
+function openScenePicker(showAll=true){
+  if(sceneInput.disabled || !state.groupRecords.length) return;
+  state.sceneOpen=true; sceneCombobox.classList.add("open"); scenePopover.hidden=false;
+  sceneInput.setAttribute("aria-expanded","true");
+  if(showAll){ sceneInput.value=""; sceneInput.placeholder=state.group ? groupLabel(state.group) : "搜索场景…"; }
+  renderSceneOptions(sceneInput.value);
+  if(state.activeSceneIndex>=0) setActiveSceneOption(state.activeSceneIndex,true);
+}
+function closeScenePicker(restore=true){
+  state.sceneOpen=false; sceneCombobox.classList.remove("open"); scenePopover.hidden=true;
+  sceneInput.setAttribute("aria-expanded","false"); sceneInput.removeAttribute("aria-activedescendant");
+  if(restore){ sceneInput.value=state.group ? groupLabel(state.group) : ""; sceneInput.placeholder="搜索场景…"; }
+}
+sceneInput.addEventListener("focus",()=>{ if(!state.sceneOpen) openScenePicker(true); });
+sceneInput.addEventListener("click",()=>{ if(!state.sceneOpen) openScenePicker(true); });
+sceneInput.addEventListener("input",()=>{ if(!state.sceneOpen) openScenePicker(false); else renderSceneOptions(sceneInput.value); });
+sceneInput.addEventListener("keydown",e=>{
+  if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+    e.preventDefault(); if(!state.sceneOpen) openScenePicker(true);
+    setActiveSceneOption(state.activeSceneIndex+(e.key==="ArrowDown"?1:-1));
+  }else if(e.key==="Enter" && state.sceneOpen){
+    e.preventDefault(); const record=state.filteredGroups[state.activeSceneIndex]; if(record) selectGroup(record.group);
+  }else if(e.key==="Escape" && state.sceneOpen){ e.preventDefault(); closeScenePicker(true); sceneInput.select(); }
+  else if(e.key==="Tab" && state.sceneOpen) closeScenePicker(true);
+});
+sceneToggle.onclick=()=>{
+  if(state.sceneOpen) closeScenePicker(true);
+  else{ sceneInput.focus(); if(!state.sceneOpen) openScenePicker(true); }
+};
+document.addEventListener("pointerdown",e=>{ if(state.sceneOpen && !sceneCombobox.contains(e.target)) closeScenePicker(true); });
+sceneCombobox.addEventListener("focusout",()=>setTimeout(()=>{ if(state.sceneOpen && !sceneCombobox.contains(document.activeElement)) closeScenePicker(true); },0));
 
-function selectGroup(group){
+function selectGroup(group,{preferredRank=null,preferredTrace=null}={}){
   cancelPendingLoad();
-  state.group = group; state.rank = null;
-  for(const el of groupChoices.querySelectorAll(".group")) el.classList.toggle("active", el.dataset.group === group);
+  state.group=group; state.rank=null; state.trace=null; activeTraceEl=null;
+  sceneInput.value=groupLabel(group); closeScenePicker(true);
   renderRanks(group);
-  setEmpty(traceChoices, "先选一个 rank");
+  setSelectPlaceholder(traceSelect,"先选 Rank");
   setSelection(`场景: ${groupLabel(group)}`);
-  log("请选择 rank");
+  log("请选择 Rank"); syncUrl(group,null,null);
+  if(preferredRank && state.rankLookup.has(preferredRank)) selectRank(group,preferredRank,state.rankLookup.get(preferredRank),{preferredTrace});
 }
 
 function renderRanks(group){
-  rankChoices.innerHTML = "";
-  const ranks = groupByRank(state.byGroup[group]);
+  rankSelect.innerHTML=""; state.rankLookup=groupByRank(state.byGroup[group]);
+  const placeholder=document.createElement("option"); placeholder.value=""; placeholder.textContent="选择 Rank"; rankSelect.appendChild(placeholder);
+  const ranks = state.rankLookup;
   const names = [...ranks.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   for(const rank of names){
     const traces = ranks.get(rank);
-    const el = document.createElement("button"); el.type="button"; el.className="rk"; el.dataset.rank=rank;
-    el.append(document.createTextNode(rank));
-    if(traces.length > 1){ const count=document.createElement("span"); count.className="count"; count.textContent=traces.length; el.appendChild(count); }
-    el.title = `${rank} · ${traces.length} trace${traces.length>1?"s":""}`;
-    el.onclick = ()=>selectRank(group, rank, traces, el);
-    rankChoices.appendChild(el);
+    const option=document.createElement("option"); option.value=rank; option.textContent=`${rank} · ${traces.length} trace${traces.length>1?"s":""}`;
+    rankSelect.appendChild(option);
   }
+  rankSelect.disabled=!names.length; rankSelect.value="";
 }
 
-function selectRank(group, rank, traces, rankEl){
+function selectRank(group, rank, traces,{preferredTrace=null}={}){
   cancelPendingLoad();
-  state.rank = rank;
-  for(const el of rankChoices.querySelectorAll(".rk")) el.classList.toggle("active", el === rankEl);
-  traceChoices.innerHTML = ""; activeTraceEl = null;
-  traces.sort((a,b)=>(a.file||"").localeCompare(b.file||"",undefined,{numeric:true}));
-  traces.forEach((tr,index)=>{
-    const el=document.createElement("button"); el.type="button"; el.className="trace"; el.title=tr.file||"";
-    const main=document.createElement("span"); main.className="trace-main"; main.textContent=traceLabel(tr,index,traces.length);
-    const meta=document.createElement("span"); meta.className="trace-meta"; meta.textContent=`${humanSize(tr.size)} · ${tr.file||"trace"}`;
-    const progress=document.createElement("span"); progress.className="p";
-    el.append(main,meta,progress);
-    el.onclick=()=>openTrace(tr,group,rank,el,index,traces.length);
-    traceChoices.appendChild(el);
+  state.rank=rank; state.trace=null; rankSelect.value=rank; rankSelect.classList.add("active");
+  traceSelect.innerHTML=""; traceSelect.classList.remove("active","done"); activeTraceEl=null; state.traceLookup=new Map();
+  const ordered = [...traces].sort(compareTracesNewestFirst);
+  const placeholder=document.createElement("option"); placeholder.value="";
+  placeholder.textContent=ordered.length>1 ? `选择 Trace · ${ordered.length} 条，最新优先` : "选择 Trace";
+  traceSelect.appendChild(placeholder);
+  const dated = new Map();
+  ordered.forEach((trace,index)=>{
+    const timestamp=traceTimestamp(trace), key=traceDateKey(trace);
+    if(!dated.has(key)) dated.set(key,{dateKey:key,timestamp,entries:[]});
+    dated.get(key).entries.push({trace,index});
   });
-  setSelection(`${groupLabel(group)} / ${rank} · ${traces.length} trace${traces.length>1?"s":""}`);
-  if(traces.length === 1) openTrace(traces[0],group,rank,traceChoices.firstElementChild,0,1);
-  else log(`该 rank 有 ${traces.length} 条 trace，请选择一条`);
+  for(const bucket of dated.values()){
+    const groupEl=document.createElement("optgroup"); groupEl.label=`${dateLabel(bucket.dateKey,bucket.timestamp)} · ${bucket.entries.length} traces`;
+    for(const {trace:tr,index} of bucket.entries){
+      let key=traceKey(tr,index); if(state.traceLookup.has(key)) key=`${key}#${index}`;
+      state.traceLookup.set(key,{tr,index,total:ordered.length,key});
+      const option=document.createElement("option"); option.value=key; option.textContent=`${traceLabel(tr,index,ordered.length)} · ${humanSize(tr.size)}`; option.title=tr.file||"";
+      groupEl.appendChild(option);
+    }
+    traceSelect.appendChild(groupEl);
+  }
+  traceSelect.disabled=!ordered.length; traceSelect.value=""; syncUrl(group,rank,null);
+  setSelection(`${groupLabel(group)} / ${rank} · ${ordered.length} trace${ordered.length>1?"s":""} · 最新优先`);
+  if(preferredTrace && state.traceLookup.has(preferredTrace)){
+    const entry=state.traceLookup.get(preferredTrace); traceSelect.value=preferredTrace;
+    openTrace(entry.tr,group,rank,traceSelect,entry.index,entry.total,entry.key);
+  }else if(ordered.length===1){
+    const entry=[...state.traceLookup.values()][0]; traceSelect.value=entry.key;
+    openTrace(entry.tr,group,rank,traceSelect,entry.index,entry.total,entry.key);
+  }else log(`该 Rank 有 ${ordered.length} 条 trace，按日期和时间倒序排列`);
 }
 
-async function openTrace(tr, group, rank, el, index, total){
-  if(activeTraceEl) activeTraceEl.classList.remove("active");
-  activeTraceEl = el; el.classList.add("active");
-  const progress = el.querySelector(".p");
+rankSelect.onchange=()=>{
+  const rank=rankSelect.value;
+  if(!rank || !state.rankLookup.has(rank)){
+    state.rank=null; state.trace=null; setSelectPlaceholder(traceSelect,"先选 Rank"); syncUrl(state.group,null,null); return;
+  }
+  selectRank(state.group,rank,state.rankLookup.get(rank));
+};
+traceSelect.onchange=()=>{
+  const entry=state.traceLookup.get(traceSelect.value);
+  if(entry) openTrace(entry.tr,state.group,state.rank,traceSelect,entry.index,entry.total,entry.key);
+};
+
+async function openTrace(tr, group, rank, el, index, total, key=traceKey(tr,index)){
+  if(activeTraceEl) activeTraceEl.classList.remove("active","done");
+  activeTraceEl=el || traceSelect;
+  if(activeTraceEl) activeTraceEl.classList.add("active");
+  state.trace=key; if(traceSelect.value!==key && state.traceLookup.has(key)) traceSelect.value=key;
+  syncUrl(group,rank,key);
   const token = ++loadToken;
   if(activeFetch) activeFetch.abort();
   const controller = new AbortController(); activeFetch = controller;
@@ -376,7 +766,6 @@ async function openTrace(tr, group, rank, el, index, total){
   try{
     const buf = await fetchParts(tr,(got,tot,part,parts)=>{
       const percent = 100*got/tot;
-      progress.style.width=percent+"%";
       showLoad("fetching",`正在加载：${shortTitle}`,percent,`分块 ${part}/${parts} · ${humanSize(got)} / ${humanSize(tot)}`);
     },controller.signal);
     if(token !== loadToken) throw abortError();
@@ -384,7 +773,7 @@ async function openTrace(tr, group, rank, el, index, total){
     showLoad("waiting",`下载完成：${shortTitle}`,100,`${humanSize(buf.byteLength)} 已下载 · 正在启动新的 Perfetto 实例`,`启动中`);
     await showInPerfetto(buf, `${groupLabel(group)} / ${rank} / ${label}`, token);
     if(token !== loadToken) throw abortError();
-    el.classList.add("done");
+    if(activeTraceEl) activeTraceEl.classList.add("done");
     showLoad("done",`已发送：${shortTitle}`,100,`网络加载完成 · Perfetto 正在解析；大 trace 可能还需要几秒`,`100%`);
     log(`100% · ${rank}/${label} 已发送到 Perfetto`);
   }catch(e){
@@ -394,15 +783,14 @@ async function openTrace(tr, group, rank, el, index, total){
       setHint("打开 trace 失败", e.message);
     }
   }finally{
-    progress.style.width="0";
-    if(token === loadToken) activeFetch = null;
+    if(token === loadToken){ activeFetch = null; refreshCompactSummary(); }
   }
 }
 
 async function loadManifest(){
   let mf;
   try{ mf = await (await fetch("manifest.json",{cache:"no-store"})).json(); }
-  catch(e){ setEmpty(groupChoices,"manifest.json 加载失败: "+e); return; }
+  catch(e){ sceneInput.placeholder="manifest.json 加载失败"; setSelection("manifest.json 加载失败"); log(String(e)); return; }
   if(mf.site_title){
     document.title = mf.site_title;
     siteTitleEl.textContent = mf.site_title;
@@ -413,28 +801,40 @@ async function loadManifest(){
     state.groupOrder.push(g.id);
   }
   for(const t of (mf.traces||[])){ (state.byGroup[t.group]=state.byGroup[t.group]||[]).push(t); }
-  groupChoices.innerHTML = "";
   const order = state.groupOrder.filter(g=>state.byGroup[g]).concat(Object.keys(state.byGroup).filter(g=>!state.groupOrder.includes(g)));
   if(!order.length){
-    setEmpty(groupChoices,"当前没有已发布 trace");
-    setEmpty(rankChoices,"等待 trace");
-    setEmpty(traceChoices,"可从下方拖入本地 trace");
+    siteSummaryText="空站点 · 可导入本地 trace";
+    sceneInput.placeholder="当前没有已发布 trace";
+    setSelectPlaceholder(rankSelect,"等待 trace");
+    setSelectPlaceholder(traceSelect,"可导入本地 trace");
     setSelection("空站点 · 可拖入本地 trace");
     log("站点已就绪，尚未发布 trace");
     return;
   }
-  order.forEach((group,index)=>{
-    const traces=state.byGroup[group], ranks=groupByRank(traces).size;
-    const tone = ["","mm","dp"][index%3];
-    const el=document.createElement("button"); el.type="button"; el.className=`group ${tone}`; el.dataset.group=group;
-    const name=document.createElement("span"); name.className="group-name"; name.textContent=groupLabel(group);
-    const meta=document.createElement("span"); meta.className="group-meta"; meta.textContent=`${ranks} ranks · ${traces.length} traces`;
-    el.append(name,meta); el.onclick=()=>selectGroup(group); groupChoices.appendChild(el);
+  const orderedGroups=order.map((group,index)=>{
+    const traces=state.byGroup[group], latest=[...traces].sort(compareTracesNewestFirst)[0];
+    return {group,index,traces,timestamp:traceTimestamp(latest),dateKey:traceDateKey(latest)};
+  }).sort((a,b)=>{
+    if(a.dateKey === "__unknown__" && b.dateKey !== "__unknown__") return 1;
+    if(a.dateKey !== "__unknown__" && b.dateKey === "__unknown__") return -1;
+    if(a.dateKey !== b.dateKey) return b.dateKey.localeCompare(a.dateKey);
+    if(a.timestamp === null && b.timestamp !== null) return 1;
+    if(a.timestamp !== null && b.timestamp === null) return -1;
+    if(a.timestamp !== null && b.timestamp !== null && a.timestamp !== b.timestamp) return b.timestamp-a.timestamp;
+    return a.index-b.index;
   });
-  if(order.length) selectGroup(order[0]);
+  state.groupRecords=orderedGroups.map(record=>({...record,ranks:groupByRank(record.traces).size}));
+  siteSummaryText=`${state.groupRecords.length} 个场景 · ${(mf.traces||[]).length} 条 trace`;
+  sceneInput.disabled=false; sceneToggle.disabled=false; sceneInput.placeholder="搜索场景…";
+  renderSceneOptions(); closeScenePicker(false);
+  const params=new URL(location.href).searchParams;
+  const requestedScene=params.get("scene");
+  const initial=state.groupRecords.some(record=>record.group===requestedScene) ? requestedScene : state.groupRecords[0].group;
+  selectGroup(initial,{preferredRank:params.get("rank"),preferredTrace:params.get("trace")});
 }
 async function handleLocal(f){
-  if(activeTraceEl) activeTraceEl.classList.remove("active");
+  if(activeTraceEl) activeTraceEl.classList.remove("active","done");
+  activeTraceEl=null; state.trace=null; traceSelect.value=""; syncUrl(state.group,state.rank,null);
   const token = ++loadToken;
   if(activeFetch) activeFetch.abort(); activeFetch = null;
   setSelection(`本地 / ${f.name}`);
@@ -450,7 +850,6 @@ async function handleLocal(f){
   }
 }
 drop.onclick=()=>fileInput.click();
-drop.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();fileInput.click();} };
 fileInput.onchange=()=>{ if(fileInput.files[0]) handleLocal(fileInput.files[0]); };
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hot");}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hot");}));

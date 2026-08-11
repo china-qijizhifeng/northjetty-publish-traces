@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
-
 
 MARKER_NAME = ".northjetty-trace-site"
 
@@ -46,15 +47,43 @@ def main() -> int:
 
         total_bytes = 0
         referenced_parts: set[Path] = set()
+        trace_ids: set[str] = set()
         for index, trace in enumerate(traces):
             if not isinstance(trace, dict):
                 fail(f"trace #{index} is not an object")
             if trace.get("group") not in group_ids:
                 fail(f"trace #{index} references unknown group {trace.get('group')!r}")
             expected_size = trace.get("size")
+            timestamp_epoch = trace.get("timestamp_epoch")
+            timestamp_source = trace.get("timestamp_source")
+            trace_id = trace.get("id")
+            storage_date = trace.get("storage_date")
             parts = trace.get("parts")
             if not isinstance(expected_size, int) or expected_size <= 0:
                 fail(f"trace #{index} has invalid size")
+            if (
+                isinstance(timestamp_epoch, bool)
+                or not isinstance(timestamp_epoch, (int, float))
+                or timestamp_epoch <= 0
+            ):
+                fail(f"trace #{index} has invalid timestamp_epoch")
+            if timestamp_source not in {"filename", "mtime", "date-folder"}:
+                fail(f"trace #{index} has invalid timestamp_source")
+            if trace_id is not None:
+                if not isinstance(trace_id, str) or not trace_id:
+                    fail(f"trace #{index} has invalid id")
+                if trace_id in trace_ids:
+                    fail(f"trace #{index} has duplicate id {trace_id!r}")
+                trace_ids.add(trace_id)
+            if storage_date is not None:
+                if not isinstance(storage_date, str) or not re.fullmatch(
+                    r"\d{4}-\d{2}-\d{2}", storage_date
+                ):
+                    fail(f"trace #{index} has invalid storage_date")
+                try:
+                    datetime.strptime(storage_date, "%Y-%m-%d")
+                except ValueError:
+                    fail(f"trace #{index} has invalid storage_date")
             if not isinstance(parts, list) or not parts:
                 fail(f"trace #{index} has no parts")
 
@@ -83,7 +112,9 @@ def main() -> int:
             total_bytes += actual_size
 
         data_dir = site / "data"
-        disk_parts = {path.resolve() for path in data_dir.rglob("*.part*") if path.is_file()}
+        disk_parts = {
+            path.resolve() for path in data_dir.rglob("*.part*") if path.is_file()
+        }
         orphaned = sorted(disk_parts - referenced_parts)
         if orphaned:
             fail(f"found {len(orphaned)} unreferenced part file(s)")
