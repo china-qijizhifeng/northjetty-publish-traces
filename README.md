@@ -19,6 +19,7 @@
 - 自动按 8,000,000 bytes 分块，避开当前 NorthJetty 单响应大小限制。
 - 支持按场景分组，并从文件名识别 `TP/PP`、`TP/DP` 或 `rank`。
 - 发布前校验 manifest、分块路径、分块大小和总字节数。
+- 浏览器按 trace 内容版本持久缓存分块，切换回已看过的 rank 时无需重复下载。
 - 默认建议使用 NorthJetty `--require-auth`。
 
 ## 安装
@@ -150,6 +151,7 @@ trace-site/
 - 默认使用 `--require-auth`；除非明确接受公开暴露，否则不要关闭鉴权。
 - Viewer 加载 `https://ui.perfetto.dev`，并在浏览器中把选中的 trace buffer 传给 Perfetto iframe；高度敏感的数据应自托管 Perfetto。
 - 分块解决的是 NorthJetty 边缘响应大小问题，不会降低浏览器内存占用。浏览器仍需拼接完整 trace，再交给 Perfetto 解析。
+- Trace 分块使用浏览器 Cache Storage 持久缓存；站点重建后会按内容摘要清理当前站点的过期分块。浏览器可能在空间不足时回收缓存，也可通过清除该站点数据主动删除。
 - `nj-publish.py` 运行所在的机器或 pod 必须持续存活；宿主退出后 route 会失效。
 
 ## 仓库结构

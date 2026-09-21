@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -30,7 +31,8 @@ def main() -> int:
                 fail(f"missing required file: {required}")
 
         manifest = json.loads((site / "manifest.json").read_text(encoding="utf-8"))
-        if manifest.get("version") != 1:
+        manifest_version = manifest.get("version")
+        if manifest_version not in (1, 2):
             fail(f"unsupported manifest version: {manifest.get('version')!r}")
         chunk_bytes = manifest.get("chunk_bytes")
         if not isinstance(chunk_bytes, int) or chunk_bytes <= 0:
@@ -52,9 +54,14 @@ def main() -> int:
             if trace.get("group") not in group_ids:
                 fail(f"trace #{index} references unknown group {trace.get('group')!r}")
             expected_size = trace.get("size")
+            cache_key = trace.get("cache_key")
             parts = trace.get("parts")
             if not isinstance(expected_size, int) or expected_size <= 0:
                 fail(f"trace #{index} has invalid size")
+            if manifest_version >= 2 and (
+                not isinstance(cache_key, str) or not re.fullmatch(r"[0-9a-f]{64}", cache_key)
+            ):
+                fail(f"trace #{index} has invalid cache_key")
             if not isinstance(parts, list) or not parts:
                 fail(f"trace #{index} has no parts")
 

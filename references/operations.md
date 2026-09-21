@@ -80,4 +80,7 @@ For large sites, finish the atomic rebuild before asking viewers to refresh.
   trace buffer to that iframe in the browser. Self-host Perfetto for highly sensitive data.
 - Chunking avoids the edge response-size limit; it does not reduce browser memory.
   The browser joins every part into one buffer before Perfetto parses it.
+- The viewer persistently caches trace parts in browser Cache Storage, keyed by a
+  content digest. Loading a rebuilt manifest prunes stale entries for that site.
+  Browser quota eviction is still possible; clearing site data removes the cache.
 - The publisher process and its host/pod must remain alive. A dead pod produces a dead route.

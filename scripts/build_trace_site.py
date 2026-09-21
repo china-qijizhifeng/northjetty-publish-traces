@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -195,20 +196,22 @@ def validate_trace(path: Path) -> None:
         raise BuildError(f"Cannot read trace {path}: {exc}") from exc
 
 
-def write_parts(source: Path, target_dir: Path, chunk_bytes: int) -> list[str]:
+def write_parts(source: Path, target_dir: Path, chunk_bytes: int) -> tuple[list[str], str]:
     target_dir.mkdir(parents=True, exist_ok=True)
     parts: list[str] = []
+    digest = hashlib.sha256()
     with source.open("rb") as stream:
         index = 0
         while True:
             payload = stream.read(chunk_bytes)
             if not payload:
                 break
+            digest.update(payload)
             part_name = f"{source.name}.part{index:03d}"
             (target_dir / part_name).write_bytes(payload)
             parts.append(part_name)
             index += 1
-    return parts
+    return parts, digest.hexdigest()
 
 
 def build_stage(
@@ -229,7 +232,7 @@ def build_stage(
         group_dir = data_dir / group
         for source in paths:
             validate_trace(source)
-            part_names = write_parts(source, group_dir, chunk_bytes)
+            part_names, cache_key = write_parts(source, group_dir, chunk_bytes)
             traces.append(
                 {
                     "group": group,
@@ -237,6 +240,7 @@ def build_stage(
                     "file": source.name,
                     "size": source.stat().st_size,
                     "encoding": "gzip" if source.name.endswith(".gz") else "identity",
+                    "cache_key": cache_key,
                     "parts": [f"data/{group}/{name}" for name in part_names],
                 }
             )
@@ -249,7 +253,7 @@ def build_stage(
         )
 
     manifest: dict[str, object] = {
-        "version": 1,
+        "version": 2,
         "site_title": title,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "chunk_bytes": chunk_bytes,

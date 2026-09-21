@@ -149,6 +149,9 @@
 
 <script>
 const PERFETTO = "https://ui.perfetto.dev";
+const TRACE_CACHE = "northjetty-trace-parts-v1";
+const TRACE_CACHE_PARAM = "trace-cache";
+const TRACE_CACHE_SCOPE = new URL(".", location.href).href;
 const siteTitleEl = document.getElementById("site-title");
 const groupChoices = document.getElementById("groups");
 const rankChoices = document.getElementById("ranks");
@@ -243,12 +246,56 @@ async function showInPerfetto(buffer, title, token){
   hint.style.display = "none";
 }
 
-// —— 分块拉取并拼回完整 buffer ——
+function cacheRequest(url, cacheKey){
+  const key = new URL(url, location.href);
+  key.searchParams.set(TRACE_CACHE_PARAM, cacheKey);
+  return new Request(key.href, {credentials:"same-origin"});
+}
+
+async function openTraceCache(){
+  if(!("caches" in window)) return null;
+  try{ return await caches.open(TRACE_CACHE); }
+  catch(e){ return null; }
+}
+
+async function pruneTraceCache(activeKeys){
+  const cache = await openTraceCache();
+  if(!cache) return;
+  try{
+    const requests = await cache.keys();
+    await Promise.all(requests.map(request=>{
+      const url = new URL(request.url);
+      if(!url.href.startsWith(TRACE_CACHE_SCOPE)) return false;
+      const key = url.searchParams.get(TRACE_CACHE_PARAM);
+      return key && !activeKeys.has(key) ? cache.delete(request) : false;
+    }));
+  }catch(e){}
+}
+
+async function fetchPart(url, cacheKey, cache, signal){
+  const keyRequest = cache && cacheKey ? cacheRequest(url,cacheKey) : null;
+  if(keyRequest){
+    try{
+      const cached = await cache.match(keyRequest);
+      if(cached) return {response:cached, cached:true, cacheWrite:null};
+    }catch(e){}
+  }
+  const response = await fetch(url, {cache:"no-store", signal});
+  const cacheWrite = response.ok && keyRequest ?
+    cache.put(keyRequest,response.clone()).catch(()=>{}) : null;
+  return {response,cached:false,cacheWrite};
+}
+
+// —— 从本地持久缓存或网络读取分块，再拼回完整 buffer ——
 async function fetchParts(tr, onProg, signal){
-  const chunks = []; let got = 0;
+  const chunks = []; const cacheWrites = []; let got = 0; let cachedParts = 0;
+  const cache = await openTraceCache();
   for(let partIndex=0;partIndex<tr.parts.length;partIndex++){
     const url = tr.parts[partIndex];
-    const r = await fetch(url, {cache:"no-store", signal});
+    const result = await fetchPart(url,tr.cache_key,cache,signal);
+    const r = result.response;
+    if(result.cached) cachedParts++;
+    if(result.cacheWrite) cacheWrites.push(result.cacheWrite);
     if(!r.ok) throw new Error(`拉取 ${url} 失败 HTTP ${r.status}`);
     if(r.body){
       const reader = r.body.getReader();
@@ -256,19 +303,20 @@ async function fetchParts(tr, onProg, signal){
         const {done,value} = await reader.read();
         if(done) break;
         chunks.push(value); got += value.byteLength;
-        onProg(got,tr.size,partIndex+1,tr.parts.length);
+        onProg(got,tr.size,partIndex+1,tr.parts.length,result.cached);
       }
     }else{
       const ab = await r.arrayBuffer();
       chunks.push(new Uint8Array(ab)); got += ab.byteLength;
-      onProg(got,tr.size,partIndex+1,tr.parts.length);
+      onProg(got,tr.size,partIndex+1,tr.parts.length,result.cached);
     }
   }
   const total = chunks.reduce((a,b)=>a+b.length,0);
   if(total !== tr.size) throw new Error(`拼接大小不符 ${total}!=${tr.size}`);
+  await Promise.all(cacheWrites);
   const out = new Uint8Array(total); let off=0;
   for(const c of chunks){ out.set(c, off); off += c.length; }
-  return out.buffer;
+  return {buffer:out.buffer,cachedParts};
 }
 
 const state = {byGroup:{}, groupMeta:{}, groupOrder:[], group:null, rank:null};
@@ -374,18 +422,22 @@ async function openTrace(tr, group, rank, el, index, total){
   log(`拉取 ${rank}/${label} …`);
   showLoad("fetching",`正在加载：${shortTitle}`,0,`准备下载 ${humanSize(tr.size)} · ${tr.parts.length} 个分块`);
   try{
-    const buf = await fetchParts(tr,(got,tot,part,parts)=>{
+    const loaded = await fetchParts(tr,(got,tot,part,parts,cached)=>{
       const percent = 100*got/tot;
       progress.style.width=percent+"%";
-      showLoad("fetching",`正在加载：${shortTitle}`,percent,`分块 ${part}/${parts} · ${humanSize(got)} / ${humanSize(tot)}`);
+      const source = cached ? "本地缓存" : "网络";
+      showLoad("fetching",`正在加载：${shortTitle}`,percent,`${source} · 分块 ${part}/${parts} · ${humanSize(got)} / ${humanSize(tot)}`);
     },controller.signal);
+    const buf = loaded.buffer;
     if(token !== loadToken) throw abortError();
     log(`${humanSize(buf.byteLength)} · 正在替换 Perfetto…`);
     showLoad("waiting",`下载完成：${shortTitle}`,100,`${humanSize(buf.byteLength)} 已下载 · 正在启动新的 Perfetto 实例`,`启动中`);
     await showInPerfetto(buf, `${groupLabel(group)} / ${rank} / ${label}`, token);
     if(token !== loadToken) throw abortError();
     el.classList.add("done");
-    showLoad("done",`已发送：${shortTitle}`,100,`网络加载完成 · Perfetto 正在解析；大 trace 可能还需要几秒`,`100%`);
+    const source = loaded.cachedParts === tr.parts.length ? "本地缓存命中" :
+      loaded.cachedParts ? `本地缓存 ${loaded.cachedParts}/${tr.parts.length} 分块` : "网络加载完成";
+    showLoad("done",`已发送：${shortTitle}`,100,`${source} · Perfetto 正在解析；大 trace 可能还需要几秒`,`100%`);
     log(`100% · ${rank}/${label} 已发送到 Perfetto`);
   }catch(e){
     if(e.name !== "AbortError" && token === loadToken){
@@ -413,6 +465,7 @@ async function loadManifest(){
     state.groupOrder.push(g.id);
   }
   for(const t of (mf.traces||[])){ (state.byGroup[t.group]=state.byGroup[t.group]||[]).push(t); }
+  pruneTraceCache(new Set((mf.traces||[]).map(t=>t.cache_key).filter(Boolean)));
   groupChoices.innerHTML = "";
   const order = state.groupOrder.filter(g=>state.byGroup[g]).concat(Object.keys(state.byGroup).filter(g=>!state.groupOrder.includes(g)));
   if(!order.length){
