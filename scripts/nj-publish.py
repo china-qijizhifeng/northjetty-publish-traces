@@ -218,6 +218,11 @@ def add_start_options(parser: argparse.ArgumentParser) -> None:
         default=os.environ.get("NORTHJETTY_ORIGIN", DEFAULT_NORTHJETTY_ORIGIN),
         help=f"NorthJetty origin. Default: {DEFAULT_NORTHJETTY_ORIGIN}.",
     )
+    parser.add_argument(
+        "--backend-cluster",
+        default="yicloud",
+        help="NorthJetty backend cluster. Default: yicloud.",
+    )
     parser.add_argument("--api-key-env", default=DEFAULT_KEY_ENV, help="Env var with the API key.")
     parser.add_argument("--wait-timeout-secs", type=int, default=120, help="Readiness wait. Default: 120.")
     parser.add_argument(
@@ -1084,6 +1089,7 @@ def run_publish(args: argparse.Namespace, *, path: Path, alias: str, alias_was_g
         payload: dict[str, Any] = {
             "alias": alias,
             "target_url": local_server.target_url(target_host),
+            "backend_cluster": args.backend_cluster,
             "enabled": True,
             "require_auth": args.require_auth,
             "wait_ready": env_flag("NORTHJETTY_WAIT_READY", default=True),
