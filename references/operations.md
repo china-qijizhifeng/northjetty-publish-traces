@@ -57,6 +57,10 @@ python3 scripts/nj-publish.py start /absolute/path/to/trace-site \
   --require-auth
 ```
 
+The publisher defaults to `--backend-cluster yicloud` and explicitly sends
+`backend_cluster` in the route creation request. Override with
+`--backend-cluster infrawaves` only when that backend is requested.
+
 If `NORTHJETTY_API_KEY` is absent, the client prompts without echoing it. The command
 prints a public URL and a distinct route access code. The API key authorizes publishing;
 the route access code authorizes viewers. Treat both as secrets and never place either

@@ -24,14 +24,26 @@
 
 ## 安装
 
-这是公开仓库，无需 GitHub 登录即可克隆到 Codex Skill 目录：
+这是公开仓库，无需 GitHub 登录。克隆到 skill 目录之外，安装链接指向
+本地仓库的 `main` checkout：
 
 ```bash
 SKILLS_ROOT="${CODEX_HOME:-$HOME/.codex}/skills"
 mkdir -p "$SKILLS_ROOT"
-git clone https://github.com/china-qijizhifeng/northjetty-publish-traces.git \
-  "$SKILLS_ROOT/northjetty-publish-traces"
+git clone --branch main https://github.com/china-qijizhifeng/northjetty-publish-traces.git \
+  "$HOME/northjetty-publish-traces"
+ln -s "$HOME/northjetty-publish-traces" "$SKILLS_ROOT/northjetty-publish-traces"
 ```
+
+如果同名安装已经存在，先检查并备份，再替换链接。开发变更在独立
+worktree 中完成；合并到 GitHub `main` 后，确认本地 checkout 位于
+`main` 且工作区干净，再同步：
+
+```bash
+git -C "$HOME/northjetty-publish-traces" pull --ff-only origin main
+```
+
+软链接直接读取更新后的本地文件，无需重新安装。
 
 新开一个 Codex 任务后即可通过 `$northjetty-publish-traces` 调用。
 

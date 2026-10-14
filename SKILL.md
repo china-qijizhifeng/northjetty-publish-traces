@@ -15,6 +15,7 @@ Create a portable static trace viewer without bundling trace data. Treat traces 
 - Validate locally before publishing.
 - Create, replace, or delete a NorthJetty route only when the user explicitly requests a live-state change.
 - Use `--require-auth` unless the user explicitly requests a public route and understands the exposure.
+- Default NorthJetty `backend_cluster` to `yicloud`. The bundled publisher sends this explicitly; use `--backend-cluster <name>` when the user requests another backend. This selects NorthJetty’s routing backend, not the trace host or Perfetto processor.
 - Never repeat secrets in the final response. The publisher API key and viewer access code are different credentials.
 
 ## Resolve bundled tools
