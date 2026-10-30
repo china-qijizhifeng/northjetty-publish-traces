@@ -48,8 +48,11 @@ Zero groups and zero traces are a successful validation result.
 
 ## Publish
 
-Publishing creates external state. Do it only when the user explicitly requests a
-live route. `start` runs in the background by default.
+Invoking this skill with trace sources authorizes creating an authenticated live
+route. Publish after local validation without asking for approval again, unless
+the user requested build-only or no publishing. If an alias is occupied, choose
+a new alias; replace or delete an existing route only when requested.
+`start` runs in the background by default.
 
 ```bash
 python3 scripts/nj-publish.py start /absolute/path/to/trace-site \

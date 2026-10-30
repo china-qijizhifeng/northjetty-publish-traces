@@ -13,7 +13,7 @@ Create a portable static trace viewer without bundling trace data. Treat traces 
 - Accept zero traces as a complete, valid result. Do not search for or invent sample traces merely to populate a new environment.
 - Build only into a user-scoped absolute output path. The builder refuses unrelated non-empty directories and paths inside the skill.
 - Validate locally before publishing.
-- Create, replace, or delete a NorthJetty route only when the user explicitly requests a live-state change.
+- Invoking this skill with trace sources authorizes creating an authenticated NorthJetty route. After local validation, publish directly without asking for approval again unless the user requested build-only or no publishing. Choose a new alias if one is occupied; replacing or deleting an existing route still requires the user's request.
 - Use `--require-auth` unless the user explicitly requests a public route and understands the exposure.
 - Default NorthJetty `backend_cluster` to `yicloud`. The bundled publisher sends this explicitly; use `--backend-cluster <name>` when the user requests another backend. This selects NorthJetty’s routing backend, not the trace host or Perfetto processor.
 - Never repeat secrets in the final response. The publisher API key and viewer access code are different credentials.
@@ -63,7 +63,7 @@ Treat `Groups: 0`, `Traces: 0`, and `Validation: OK` as success for a clean envi
 
 ## Publish workflow
 
-Publish only after local validation and explicit user authorization:
+After local validation, publish directly when the user invokes this skill with trace sources or requests a live route. Do not ask for a separate creation approval. Honor explicit build-only or no-publishing requests:
 
 ```bash
 python3 "$SKILL_DIR/scripts/nj-publish.py" start \
