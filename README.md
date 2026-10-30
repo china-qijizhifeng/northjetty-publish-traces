@@ -49,6 +49,11 @@ git -C "$HOME/northjetty-publish-traces" pull --ff-only origin main
 
 ## 在 Codex 中使用
 
+调用此技能并提供 trace 路径，即授权创建带访问鉴权的 NorthJetty 站点；
+本地验证通过后直接发布，无需再次确认。明确要求仅构建或暂不发布时，按该要求执行。
+替换已有 route 仍需用户提出请求。删除 route 前必须向用户列明待删除的别名并获得明确确认；
+此要求也适用于 `stop <alias>`、`stop all` 和替换过程中的删除操作。
+
 初始化一个没有任何 trace 的空站点：
 
 ```text

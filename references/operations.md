@@ -48,8 +48,13 @@ Zero groups and zero traces are a successful validation result.
 
 ## Publish
 
-Publishing creates external state. Do it only when the user explicitly requests a
-live route. `start` runs in the background by default.
+Invoking this skill with trace sources authorizes creating an authenticated live
+route. Publish after local validation without asking for approval again, unless
+the user requested build-only or no publishing. If an alias is occupied, choose
+a new alias; replace an existing route only when requested. Before any route
+deletion, ask the user to confirm the exact route alias(es) and wait for explicit
+confirmation, including when deletion is part of replacement.
+`start` runs in the background by default.
 
 ```bash
 python3 scripts/nj-publish.py start /absolute/path/to/trace-site \
@@ -67,6 +72,9 @@ the route access code authorizes viewers. Treat both as secrets and never place 
 in skill files, source control, shell command arguments, or the final response.
 
 ## Manage
+
+`stop` deletes the route. Before running `stop <alias>` or `stop all`, ask the
+user to confirm the exact route alias(es) to delete and wait for confirmation.
 
 ```bash
 python3 scripts/nj-publish.py list
