@@ -13,7 +13,8 @@ Create a portable static trace viewer without bundling trace data. Treat traces 
 - Accept zero traces as a complete, valid result. Do not search for or invent sample traces merely to populate a new environment.
 - Build only into a user-scoped absolute output path. The builder refuses unrelated non-empty directories and paths inside the skill.
 - Validate locally before publishing.
-- Invoking this skill with trace sources authorizes creating an authenticated NorthJetty route. After local validation, publish directly without asking for approval again unless the user requested build-only or no publishing. Choose a new alias if one is occupied; replacing or deleting an existing route still requires the user's request.
+- Invoking this skill with trace sources authorizes creating an authenticated NorthJetty route. After local validation, publish directly without asking for approval again unless the user requested build-only or no publishing. Choose a new alias if one is occupied; replacing an existing route still requires the user's request.
+- Before deleting a route, ask the user to confirm the exact route alias(es) and wait for explicit confirmation. This includes `stop <alias>`, `stop all`, and deletion as part of replacement.
 - Use `--require-auth` unless the user explicitly requests a public route and understands the exposure.
 - Default NorthJetty `backend_cluster` to `yicloud`. The bundled publisher sends this explicitly; use `--backend-cluster <name>` when the user requests another backend. This selects NorthJetty’s routing backend, not the trace host or Perfetto processor.
 - Never repeat secrets in the final response. The publisher API key and viewer access code are different credentials.
@@ -80,7 +81,7 @@ Verify the route state:
 python3 "$SKILL_DIR/scripts/nj-publish.py" list
 ```
 
-For updates, rebuild the same generated output and re-run validation; the static server serves refreshed files without route recreation. For lifecycle work, use `logs <alias>` and `stop <alias>` only within the user's requested scope.
+For updates, rebuild the same generated output and re-run validation; the static server serves refreshed files without route recreation. For lifecycle work, use `logs <alias>` within the user's requested scope; run `stop <alias>` only after the user confirms deletion of that route.
 
 ## Handoff
 
